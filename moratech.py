@@ -362,14 +362,13 @@ def login():
 def add_user():
     """Agregar usuario SSH o Token"""
     clear_screen()
-    print_banner()
-    print(f"\n{Color.CYAN}╔══════════════════════════════════════════════════════════╗{Color.END}")
-    print(f"{Color.CYAN}║              AGREGAR USUARIO                             ║{Color.END}")
-    print(f"{Color.CYAN}╚══════════════════════════════════════════════════════════╝{Color.END}\n")
-    
-    print(f"{Color.YELLOW}Tipo de usuario:{Color.END}")
-    print(f"{Color.GREEN}1.{Color.END} Usuario SSH")
-    print(f"{Color.GREEN}2.{Color.END} Usuario Token")
+    print_line()
+    print(f" {Color.CYAN}CREAR CUENTA{Color.END}")
+    print_line()
+    print(f"{Color.YELLOW}USUARIO:{Color.END}")
+    print(f"{Color.GREEN}1.{Color.END} > SSH")
+    print(f"{Color.GREEN}2.{Color.END} > TOKEN")
+    print_line()
     print(f"{Color.GREEN}0.{Color.END} Volver")
     
     choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
@@ -612,20 +611,22 @@ def show_users():
     
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
-def users_menu():
+def control_usuarios_menu():
     """Menú de control de usuarios"""
     while True:
-        show_dashboard()
+        print_line()
         print(f" {Color.CYAN}CONTROL DE USUARIOS{Color.END}")
         print_line()
-        print(f" {Color.GREEN}[01]{Color.END} ➮ Agregar usuario (SSH/TOKEN)")
-        print(f" {Color.GREEN}[02]{Color.END} ➮ Borrar usuario")
-        print(f" {Color.GREEN}[03]{Color.END} ➮ Editar/Renovar usuario")
-        print(f" {Color.GREEN}[04]{Color.END} ➮ Mostrar usuarios")
-        print(f" {Color.GREEN}[09]{Color.END} ➮ Backup de usuarios")
-        print(f" {Color.GREEN}[10]{Color.END} ➮ CheckUser Online")
-        print(f" {Color.GREEN}[11]{Color.END} ➮ Bot Telegram")
-        print(f" {Color.GREEN}[12]{Color.END} ➮ Resetear contraseña Token")
+        print(f" {Color.GREEN}[01]{Color.END} ➮ AGREGAR USUARIO (SSH/TOKEN)")
+        print(f" {Color.GREEN}[02]{Color.END} ➮ BORRAR 1/TODOS LOS USUARIO/s")
+        print(f" {Color.GREEN}[03]{Color.END} ➮ EDITAR/RENOVAR USUARIOS")
+        print(f" {Color.GREEN}[04]{Color.END} ➮ MOSTRAR USUARIOS REGISTRADOS")
+        print_line()
+        print(f" {Color.GREEN}[09]{Color.END} ➮ BACKUP USUARIOS")
+        print(f" {Color.GREEN}[10]{Color.END} ➮ CHECKUSER ONLINE")
+        print(f" {Color.GREEN}[11]{Color.END} ➮ BOT TELEGRAM")
+        print_line()
+        print(f" {Color.GREEN}[12]{Color.END} ➮ REINICIAR CONTRASEÑA TOKEN")
         print_line()
         print(f" {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}Volver{Color.END}")
         print_line()
@@ -659,15 +660,25 @@ def users_menu():
 def protocols_menu():
     """Menú de protocolos"""
     while True:
-        show_dashboard()
-        print(f" {Color.CYAN}PROTOCOLOS{Color.END}")
+        clear_screen()
+        print_line()
+        print(f" {Color.CYAN}INSTALACION DE PROTOCOLOS DE PROTOCOLOS{Color.END}")
         print_line()
   
-        print(f"{Color.GREEN}1.{Color.END} SSL")
-        print(f"{Color.GREEN}2.{Color.END} Python")
-        print(f"{Color.GREEN}3.{Color.END} V2Ray")
-        print(f"{Color.GREEN}4.{Color.END} SlowDNS")
-        print(f"{Color.GREEN}5.{Color.END} BadVPN")
+        print(f"{Color.GREEN}1.{Color.END} ➮ SSL/TLS")
+        print(f"{Color.GREEN}2.{Color.END} ➮ PROXY PYTHON")
+        print(f"{Color.GREEN}3.{Color.END} ➮ V2RAY SWITCH (desarrollo...)")
+        print(f"{Color.GREEN}4.{Color.END} ➮ SlowDNS (desarrollo...)")
+
+        print_line()
+        print(f" {Color.CYAN}HERRAMIENTAS Y SERVICIOS{Color.END}")
+        print_line()
+
+        print(f"{Color.GREEN}5.{Color.END} ➮ BadVPN")
+        print(f"{Color.GREEN}5.{Color.END} ➮ EXTRAS (desarrollo...)")
+        
+
+        print_line()
         print(f"{Color.GREEN}0.{Color.END} Volver")
         
         choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
@@ -685,7 +696,7 @@ def protocols_menu():
 def menu_ssl():
     """Menu de ssl"""
     while True:
-        show_dashboard()
+        #show_dashboard()
 
         # Mostrar estado actual - DETECCIÓN AUTOMÁTICA
         try:
@@ -991,7 +1002,7 @@ def stop_ssl():
 def menu_phyton():
     """Menu de phyton"""
     while True:
-        show_dashboard()
+        #show_dashboard()
 
         # Mostrar estado actual - DETECCIÓN AUTOMÁTICA
         try:
@@ -1636,7 +1647,7 @@ def main_menu(username):
         choice = input(f" {Color.CYAN}►{Color.END} Opción: ").strip()
         
         if choice == '1' or choice == '01':
-            users_menu()
+            control_usuarios_menu()
         elif choice == '2' or choice == '02':
             protocols_menu()
         elif choice == '3' or choice == '03':
