@@ -104,6 +104,13 @@ def get_system_info():
 
 def get_active_ports():
     """Obtiene puertos activos"""
+    # Leer configuración de protocolos
+    try:
+        with open(PROTOCOLS_FILE, 'r') as f:
+            protocols_config = json.load(f)
+    except:
+        protocols_config = {}
+    
     ports = {
         'SSH': '22',
         'SSL': '-',
@@ -121,8 +128,24 @@ def get_active_ports():
         if ':22 ' in output or ':22\n' in output:
             ports['SSH'] = '22 ✓'
         
-        # Aquí luego agregaremos verificación de otros puertos
+        # Verificar SSL
+        if protocols_config.get('ssl', {}).get('enabled'):
+            ssl_port = protocols_config['ssl']['port']
+            if f':{ssl_port} ' in output or f':{ssl_port}\n' in output:
+                ports['SSL'] = f'{ssl_port} ✓'
+            else:
+                ports['SSL'] = f'{ssl_port}'
         
+        # Verificar BadVPN
+        if protocols_config.get('badvpn', {}).get('enabled'):
+            badvpn_port = protocols_config['badvpn']['port']
+            ports['BadVPN'] = f'{badvpn_port}'
+        
+        # Verificar Proxy
+        if protocols_config.get('proxy', {}).get('enabled'):
+            proxy_port = protocols_config['proxy']['port']
+            ports['Proxy'] = f'{proxy_port}'
+            
     except Exception as e:
         pass
     
