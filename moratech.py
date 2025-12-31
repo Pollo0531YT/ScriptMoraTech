@@ -594,12 +594,50 @@ def protocols_menu():
         print(f"{Color.GREEN}0.{Color.END} Volver")
         
         choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
-        
-        if choice == '0':
+        if choice == '1':
+            install_ssl()
+        elif choice == '0':
             break
         else:
             print(f"\n{Color.YELLOW}Función en desarrollo...{Color.END}")
             input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+
+# ==================== FUNCIONES DE PROTOCOLOS ====================
+def install_ssl():
+    """Instalar/Configurar SSL"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}CONFIGURAR SSL{Color.END}")
+    print_line()
+    
+    port = input(f"\n {Color.GREEN}Puerto para SSL (default 443): {Color.END}").strip()
+    if not port:
+        port = "443"
+    
+    print(f"\n {Color.YELLOW}Abriendo puerto {port}...{Color.END}")
+    
+    try:
+        # Abrir puerto con UFW
+        subprocess.run(['ufw', 'allow', port], check=True)
+        
+        # Guardar en config
+        with open(PROTOCOLS_FILE, 'r') as f:
+            protocols = json.load(f)
+        
+        protocols['ssl']['enabled'] = True
+        protocols['ssl']['port'] = int(port)
+        
+        with open(PROTOCOLS_FILE, 'w') as f:
+            json.dump(protocols, f, indent=4)
+        
+        print(f" {Color.GREEN}✓ Puerto {port} abierto correctamente{Color.END}")
+        log_action("admin", f"SSL configurado en puerto {port}")
+        
+    except Exception as e:
+        print(f" {Color.RED}✗ Error: {e}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 # ==================== MENÚ PRINCIPAL ====================
 
