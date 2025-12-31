@@ -688,6 +688,16 @@ def menu_ssl():
         show_dashboard()
         print(f" {Color.CYAN}SSL{Color.END}")
         print_line()
+
+                # Mostrar estado actual
+        try:
+            with open(PROTOCOLS_FILE, 'r') as f:
+                protocols = json.load(f)
+            ssl_status = f"{Color.GREEN}ACTIVO{Color.END}" if protocols.get('ssl', {}).get('enabled') else f"{Color.YELLOW}INACTIVO{Color.END}"
+            print(f" SSL: {ssl_status}")
+            print_line()
+        except:
+            pass
   
         print(f"{Color.GREEN}1.{Color.END} Iniciar SSL")
         print(f"{Color.GREEN}2.{Color.END} Detener SSL")
@@ -880,6 +890,16 @@ def menu_phyton():
         show_dashboard()
         print(f" {Color.CYAN}SSL{Color.END}")
         print_line()
+
+                # Mostrar estado actual
+        try:
+            with open(PROTOCOLS_FILE, 'r') as f:
+                protocols = json.load(f)
+            proxy_status = f"{Color.GREEN}ACTIVO{Color.END}" if protocols.get('proxy', {}).get('enabled') else f"{Color.YELLOW}INACTIVO{Color.END}"
+            print(f" Phyton: {proxy_status}")
+            print_line()
+        except:
+            pass
   
         print(f"{Color.GREEN}1.{Color.END} Iniciar PHYTON")
         print(f"{Color.GREEN}2.{Color.END} Detener PHYTON")
