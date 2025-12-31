@@ -619,6 +619,8 @@ def protocols_menu():
         choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
         if choice == '1':
             install_ssl()
+        elif choice == '4':
+            install_proxy()    
         elif choice == '0':
             break
         else:
@@ -627,22 +629,92 @@ def protocols_menu():
 
 # ==================== FUNCIONES DE PROTOCOLOS ====================
 def install_ssl():
-    """Instalar/Configurar SSL"""
+    """Instalar/Configurar SSL con Stunnel"""
     clear_screen()
     print_banner()
     print_line()
-    print(f" {Color.CYAN}CONFIGURAR SSL{Color.END}")
+    print(f" {Color.CYAN}INSTALANDO SSL (STUNNEL){Color.END}")
     print_line()
     
     port = input(f"\n {Color.GREEN}Puerto para SSL (default 443): {Color.END}").strip()
     if not port:
         port = "443"
     
-    print(f"\n {Color.YELLOW}Abriendo puerto {port}...{Color.END}")
+    print(f"\n {Color.YELLOW}Instalando Stunnel en puerto {port}...{Color.END}")
     
     try:
-        # Abrir puerto con UFW
-        subprocess.run(['ufw', 'allow', port], check=True)
+        # Detener servicios anteriores
+        subprocess.run(['pkill', '-f', 'stunnel4'], stderr=subprocess.DEVNULL)
+        subprocess.run(['pkill', '-f', 'stunnel'], stderr=subprocess.DEVNULL)
+        subprocess.run(['pkill', '-f', port], stderr=subprocess.DEVNULL)
+        
+        # Purgar instalaciones anteriores
+        subprocess.run(['apt-get', 'purge', 'stunnel4', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'purge', 'stunnel', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Instalar stunnel
+        print(f" {Color.YELLOW}Instalando paquetes...{Color.END}")
+        subprocess.run(['apt-get', 'install', 'stunnel4', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'stunnel', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Obtener puerto SSH
+        result = subprocess.run(['netstat', '-nplt'], capture_output=True, text=True)
+        ssh_port = '22'
+        for line in result.stdout.split('\n'):
+            if 'sshd' in line:
+                parts = line.split(':')
+                if len(parts) > 1:
+                    ssh_port = parts[1].split()[0]
+                    break
+        
+        print(f" {Color.YELLOW}Puerto SSH detectado: {ssh_port}{Color.END}")
+        
+        # Crear configuración stunnel
+        stunnel_conf = f"""cert = /etc/stunnel/stunnel.pem
+client = no
+socket = a:SO_REUSEADDR=1
+socket = l:TCP_NODELAY=1
+socket = r:TCP_NODELAY=1
+
+[stunnel]
+connect = 127.0.0.1:{ssh_port}
+accept = {port}
+"""
+        
+        with open('/etc/stunnel/stunnel.conf', 'w') as f:
+            f.write(stunnel_conf)
+        
+        # Generar certificados
+        print(f" {Color.YELLOW}Generando certificados...{Color.END}")
+        subprocess.run(['openssl', 'genrsa', '-out', 'key.pem', '2048'], 
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        cert_data = "br\nbr\nuss\nspeed\npnl\nmoratech\n@moratech.com\n"
+        proc = subprocess.Popen(['openssl', 'req', '-new', '-x509', '-key', 'key.pem', 
+                                '-out', 'cert.pem', '-days', '1095'],
+                               stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, 
+                               stderr=subprocess.DEVNULL)
+        proc.communicate(input=cert_data.encode())
+        
+        # Combinar certificados
+        with open('key.pem', 'r') as f1, open('cert.pem', 'r') as f2:
+            combined = f1.read() + f2.read()
+        
+        with open('/etc/stunnel/stunnel.pem', 'w') as f:
+            f.write(combined)
+        
+        # Habilitar stunnel
+        subprocess.run(['sed', '-i', 's/ENABLED=0/ENABLED=1/g', '/etc/default/stunnel4'])
+        
+        # Reiniciar servicios
+        print(f" {Color.YELLOW}Iniciando servicios...{Color.END}")
+        subprocess.run(['service', 'stunnel4', 'restart'], stderr=subprocess.DEVNULL)
+        subprocess.run(['service', 'stunnel', 'restart'], stderr=subprocess.DEVNULL)
+        subprocess.run(['service', 'stunnel4', 'start'], stderr=subprocess.DEVNULL)
+        
+        # Abrir puerto con UFW e iptables
+        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        subprocess.run(['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'])
         
         # Guardar en config
         with open(PROTOCOLS_FILE, 'r') as f:
@@ -654,14 +726,325 @@ def install_ssl():
         with open(PROTOCOLS_FILE, 'w') as f:
             json.dump(protocols, f, indent=4)
         
-        print(f" {Color.GREEN}✓ Puerto {port} abierto correctamente{Color.END}")
+        # Limpiar archivos temporales
+        subprocess.run(['rm', '-f', 'key.pem', 'cert.pem'], stderr=subprocess.DEVNULL)
+        
+        print(f"\n {Color.GREEN}✓ SSL instalado correctamente en puerto {port}{Color.END}")
         log_action("admin", f"SSL configurado en puerto {port}")
         
     except Exception as e:
-        print(f" {Color.RED}✗ Error: {e}{Color.END}")
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
+def install_proxy():
+    """Instalar Proxy Python"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}INSTALANDO PROXY PYTHON{Color.END}")
+    print_line()
+    
+    port = input(f"\n {Color.GREEN}Puerto para Proxy (default 80): {Color.END}").strip()
+    if not port:
+        port = "80"
+    
+    print(f"\n {Color.YELLOW}Instalando Proxy Python en puerto {port}...{Color.END}")
+    
+    try:
+        # Detener proceso anterior
+        subprocess.run(['pkill', '-f', 'pythonwe'], stderr=subprocess.DEVNULL)
+        subprocess.run(['pkill', 'python'], stderr=subprocess.DEVNULL)
+        
+        # Instalar dependencias
+        print(f" {Color.YELLOW}Instalando dependencias...{Color.END}")
+        subprocess.run(['apt-get', 'install', 'python', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'screen', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Obtener puerto SSH
+        result = subprocess.run(['netstat', '-nplt'], capture_output=True, text=True)
+        ssh_port = '22'
+        for line in result.stdout.split('\n'):
+            if 'sshd' in line:
+                parts = line.split(':')
+                if len(parts) > 1:
+                    ssh_port = parts[1].split()[0]
+                    break
+        
+        print(f" {Color.YELLOW}Puerto SSH detectado: {ssh_port}{Color.END}")
+        
+        # Script Python completo (el del documento)
+        proxy_script = f"""import socket, threading, thread, select, signal, sys, time, getopt
+
+LISTENING_ADDR = '0.0.0.0'
+LISTENING_PORT = {port}
+PASS = ''
+BUFLEN = 4096 * 4
+TIMEOUT = 60
+DEFAULT_HOST = "127.0.0.1:{ssh_port}"
+RESPONSE = 'HTTP/1.1 101 Switching Protocols! \\r\\n\\r\\n'
+
+class Server(threading.Thread):
+    def __init__(self, host, port):
+        threading.Thread.__init__(self)
+        self.running = False
+        self.host = host
+        self.port = port
+        self.threads = []
+        self.threadsLock = threading.Lock()
+        self.logLock = threading.Lock()
+
+    def run(self):
+        self.soc = socket.socket(socket.AF_INET)
+        self.soc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.soc.settimeout(2)
+        self.soc.bind((self.host, self.port))
+        self.soc.listen(0)
+        self.running = True
+
+        try:
+            while self.running:
+                try:
+                    c, addr = self.soc.accept()
+                    c.setblocking(1)
+                except socket.timeout:
+                    continue
+                
+                conn = ConnectionHandler(c, self, addr)
+                conn.start();
+                self.addConn(conn)
+        finally:
+            self.running = False
+            self.soc.close()
+            
+    def printLog(self, log):
+        self.logLock.acquire()
+        print log
+        self.logLock.release()
+    
+    def addConn(self, conn):
+        try:
+            self.threadsLock.acquire()
+            if self.running:
+                self.threads.append(conn)
+        finally:
+            self.threadsLock.release()
+                    
+    def removeConn(self, conn):
+        try:
+            self.threadsLock.acquire()
+            self.threads.remove(conn)
+        finally:
+            self.threadsLock.release()
+                
+    def close(self):
+        try:
+            self.running = False
+            self.threadsLock.acquire()
+            
+            threads = list(self.threads)
+            for c in threads:
+                c.close()
+        finally:
+            self.threadsLock.release()
+
+class ConnectionHandler(threading.Thread):
+    def __init__(self, socClient, server, addr):
+        threading.Thread.__init__(self)
+        self.clientClosed = False
+        self.targetClosed = True
+        self.client = socClient
+        self.client_buffer = ''
+        self.server = server
+        self.log = 'Connection: ' + str(addr)
+
+    def close(self):
+        try:
+            if not self.clientClosed:
+                self.client.shutdown(socket.SHUT_RDWR)
+                self.client.close()
+        except:
+            pass
+        finally:
+            self.clientClosed = True
+            
+        try:
+            if not self.targetClosed:
+                self.target.shutdown(socket.SHUT_RDWR)
+                self.target.close()
+        except:
+            pass
+        finally:
+            self.targetClosed = True
+
+    def run(self):
+        try:
+            self.client_buffer = self.client.recv(BUFLEN)
+        
+            hostPort = self.findHeader(self.client_buffer, 'X-Real-Host')
+            
+            if hostPort == '':
+                hostPort = DEFAULT_HOST
+
+            split = self.findHeader(self.client_buffer, 'X-Split')
+
+            if split != '':
+                self.client.recv(BUFLEN)
+            
+            if hostPort != '':
+                passwd = self.findHeader(self.client_buffer, 'X-Pass')
+                
+                if len(PASS) != 0 and passwd == PASS:
+                    self.method_CONNECT(hostPort)
+                elif len(PASS) != 0 and passwd != PASS:
+                    self.client.send('HTTP/1.1 400 WrongPass!\\r\\n\\r\\n')
+                elif hostPort.startswith('127.0.0.1') or hostPort.startswith('localhost'):
+                    self.method_CONNECT(hostPort)
+                else:
+                    self.client.send('HTTP/1.1 403 Forbidden!\\r\\n\\r\\n')
+            else:
+                print '- No X-Real-Host!'
+                self.client.send('HTTP/1.1 400 NoXRealHost!\\r\\n\\r\\n')
+
+        except Exception as e:
+            self.log += ' - error: ' + e.strerror
+            self.server.printLog(self.log)
+            pass
+        finally:
+            self.close()
+            self.server.removeConn(self)
+
+    def findHeader(self, head, header):
+        aux = head.find(header + ': ')
+    
+        if aux == -1:
+            return ''
+
+        aux = head.find(':', aux)
+        head = head[aux+2:]
+        aux = head.find('\\r\\n')
+
+        if aux == -1:
+            return ''
+
+        return head[:aux];
+
+    def connect_target(self, host):
+        i = host.find(':')
+        if i != -1:
+            port = int(host[i+1:])
+            host = host[:i]
+        else:
+            if self.method=='CONNECT':
+                port = 443
+            else:
+                port = 80
+
+        (soc_family, soc_type, proto, _, address) = socket.getaddrinfo(host, port)[0]
+
+        self.target = socket.socket(soc_family, soc_type, proto)
+        self.targetClosed = False
+        self.target.connect(address)
+
+    def method_CONNECT(self, path):
+        self.log += ' - CONNECT ' + path
+        
+        self.connect_target(path)
+        self.client.sendall(RESPONSE)
+        self.client_buffer = ''
+
+        self.server.printLog(self.log)
+        self.doCONNECT()
+
+    def doCONNECT(self):
+        socs = [self.client, self.target]
+        count = 0
+        error = False
+        while True:
+            count += 1
+            (recv, _, err) = select.select(socs, [], socs, 3)
+            if err:
+                error = True
+            if recv:
+                for in_ in recv:
+                    try:
+                        data = in_.recv(BUFLEN)
+                        if data:
+                            if in_ is self.target:
+                                self.client.send(data)
+                            else:
+                                while data:
+                                    byte = self.target.send(data)
+                                    data = data[byte:]
+
+                            count = 0
+                        else:
+                            break
+                    except:
+                        error = True
+                        break
+            if count == TIMEOUT:
+                error = True
+
+            if error:
+                break
+
+def main(host=LISTENING_ADDR, port=LISTENING_PORT):
+    print "\\n =============================="
+    print "\\n         PYTHON PROXY"
+    print "\\n =============================="
+    print "IP: " + LISTENING_ADDR
+    print "Puerto: " + str(LISTENING_PORT)
+    
+    server = Server(LISTENING_ADDR, LISTENING_PORT)
+    server.start()
+
+    while True:
+        try:
+            time.sleep(2)
+        except KeyboardInterrupt:
+            print 'Stopping...'
+            server.close()
+            break
+
+if __name__ == '__main__':
+    main()
+"""
+        
+        # Guardar script
+        with open('/root/proxy.py', 'w') as f:
+            f.write(proxy_script)
+        
+        # Iniciar proxy en screen
+        print(f" {Color.YELLOW}Iniciando proxy...{Color.END}")
+        subprocess.run(['screen', '-dmS', 'pythonwe', 'python', '/root/proxy.py'])
+        
+        # Abrir puerto
+        subprocess.run(['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'])
+        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        
+        # Agregar a autostart
+        autostart_cmd = f"ps x | grep 'pythonwe' | grep -v 'grep' || screen -dmS pythonwe python /root/proxy.py\n"
+        with open('/etc/autostart', 'a') as f:
+            f.write(autostart_cmd)
+        
+        # Guardar en config
+        with open(PROTOCOLS_FILE, 'r') as f:
+            protocols = json.load(f)
+        
+        protocols['proxy']['enabled'] = True
+        protocols['proxy']['port'] = int(port)
+        
+        with open(PROTOCOLS_FILE, 'w') as f:
+            json.dump(protocols, f, indent=4)
+        
+        print(f"\n {Color.GREEN}✓ Proxy Python instalado en puerto {port}{Color.END}")
+        log_action("admin", f"Proxy Python configurado en puerto {port}")
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 # ==================== MENÚ PRINCIPAL ====================
 
 def main_menu(username):
