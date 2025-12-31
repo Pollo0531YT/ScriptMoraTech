@@ -673,7 +673,7 @@ def protocols_menu():
         choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
         if choice == '1':
             menu_ssl()
-        elif choice == '4':
+        elif choice == '2':
             menu_phyton()    
         elif choice == '0':
             break
