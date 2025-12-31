@@ -158,7 +158,7 @@ def init_system():
     if not USERS_FILE.exists():
         users = {
             "admin": {
-                "password": hashlib.sha256("admin123".encode()).hexdigest(),
+                "password": "admin123",
                 "role": "admin",
                 "type": "ssh",
                 "created": datetime.now().isoformat(),
@@ -1138,7 +1138,7 @@ def reset_token_password():
     users = load_users()
     for username, data in users.items():
         if data.get('type') == 'token':
-            users[username]['password'] = hashlib.sha256(token_config['token_password'].encode()).hexdigest()
+            users[username]['password'] = token_config['token_password']
     save_users(users)
     
     print(f"\n {Color.GREEN}✓ Contraseña de tokens actualizada{Color.END}")
