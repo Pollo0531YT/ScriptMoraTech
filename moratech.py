@@ -765,7 +765,7 @@ def install_ssl():
         subprocess.run(['openssl', 'genrsa', '-out', '/tmp/key.pem', '2048'], 
                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
-        # Datos del certificado (esto hace que sea automático)
+        # Datos del certificado
         cert_data = "US\nCalifornia\nSan Francisco\nMoraTech\nVPN\nvps.moratech.work\nadmin@moratech.work\n\n\n"
         proc = subprocess.Popen(['openssl', 'req', '-new', '-x509', '-key', '/tmp/key.pem', 
                                 '-out', '/tmp/cert.pem', '-days', '3650'],
@@ -782,8 +782,9 @@ def install_ssl():
         
         subprocess.run(['chmod', '600', '/etc/stunnel/stunnel.pem'])
         
-        # Configuración stunnel EXACTA como la que funciona
-        stunnel_conf = f"""cert = /etc/stunnel/stunnel.pem
+        # Configuración stunnel CON pid
+        stunnel_conf = f"""pid = /var/run/stunnel.pid
+cert = /etc/stunnel/stunnel.pem
 client = no
 socket = a:SO_REUSEADDR=1
 socket = l:TCP_NODELAY=1
@@ -792,11 +793,6 @@ socket = r:TCP_NODELAY=1
 [stunnel]
 connect = 127.0.0.1:{ssh_port}
 accept = {port}
-
-[stunnel-ssl]
-cert = /etc/stunnel/stunnel.pem
-accept = {port}
-connect = 127.0.0.1:{ssh_port}
 """
         
         with open('/etc/stunnel/stunnel.conf', 'w') as f:
@@ -826,6 +822,8 @@ connect = 127.0.0.1:{ssh_port}
         result = subprocess.run(['systemctl', 'status', 'stunnel4'], capture_output=True, text=True)
         if 'active (running)' in result.stdout:
             print(f" {Color.GREEN}✓ Stunnel iniciado{Color.END}")
+        else:
+            print(f" {Color.YELLOW}⚠ Verificar status de stunnel{Color.END}")
         
         # Abrir puerto
         subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
@@ -841,6 +839,8 @@ connect = 127.0.0.1:{ssh_port}
         result = subprocess.run(['netstat', '-tlnp'], capture_output=True, text=True)
         if f':{port}' in result.stdout and 'stunnel' in result.stdout:
             print(f" {Color.GREEN}✓ Puerto {port} escuchando correctamente{Color.END}")
+        else:
+            print(f" {Color.YELLOW}⚠ Puerto {port} no está escuchando{Color.END}")
         
         # Guardar en config
         with open(PROTOCOLS_FILE, 'r') as f:
