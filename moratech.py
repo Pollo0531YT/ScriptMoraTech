@@ -731,144 +731,118 @@ def menu_ssl():
             input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def install_ssl():
-    """Instalar/Configurar SSL con Stunnel — versión robusta para Ubuntu"""
-    import shutil, time, traceback
+    """Instalar SSL con certificado automático"""
     clear_screen()
     print_banner()
     print_line()
-    print(f" {Color.CYAN}INSTALANDO SSL (STUNNEL){Color.END}")
+    print(f" {Color.CYAN}INSTALANDO SSL (CERTIFICADO AUTOMÁTICO){Color.END}")
     print_line()
-
-    port = input(f"\n {Color.GREEN}Puerto para SSL (default 443): {Color.END}").strip() or "443"
+    
+    port = input(f"\n {Color.GREEN}Puerto para SSL (default 443): {Color.END}").strip()
+    if not port:
+        port = "443"
+    
     print(f"\n {Color.YELLOW}Instalando Stunnel en puerto {port}...{Color.END}")
-
+    
     try:
-        # revisar privilegios
-        if os.geteuid() != 0:
-            raise RuntimeError("Debes ejecutar esto como root (sudo).")
-
-        # verificar binaries
-        for cmd in ('apt-get','ss','openssl','systemctl','iptables-save'):
-            if not shutil.which(cmd):
-                raise RuntimeError(f"Falta el comando requerido: {cmd}")
-
-        # Detener servicio anterior usando systemctl
-        subprocess.run(['systemctl','stop','stunnel4'], stderr=subprocess.DEVNULL)
-
-        # Instalar paquetes si faltan
-        if not shutil.which('stunnel4'):
-            print(f" {Color.YELLOW}Instalando stunnel4 y dependencias...{Color.END}")
-            subprocess.run(['apt-get','update'], stdout=subprocess.DEVNULL)
-            subprocess.run(['apt-get','install','-y','stunnel4','iptables-persistent'], stdout=subprocess.DEVNULL)
-
-        # Detectar puerto SSH (simple)
+        # Detener servicios anteriores
+        subprocess.run(['pkill', '-f', 'stunnel4'], stderr=subprocess.DEVNULL)
+        subprocess.run(['pkill', '-f', 'stunnel'], stderr=subprocess.DEVNULL)
+        subprocess.run(['service', 'stunnel4', 'stop'], stderr=subprocess.DEVNULL)
+        
+        # Purgar e instalar
+        print(f" {Color.YELLOW}Instalando paquetes...{Color.END}")
+        subprocess.run(['apt-get', 'purge', 'stunnel4', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'stunnel4', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Obtener puerto SSH
         ssh_port = '22'
-        ss_out = subprocess.run(['ss','-tlnp'], capture_output=True, text=True)
-        for line in ss_out.stdout.splitlines():
-            if 'sshd' in line and ':22' in line:
-                ssh_port = '22'
-                break
-        print(f" {Color.YELLOW}Puerto SSH detectado: {ssh_port}{Color.END}")
-
-        # Generar stunnel.conf
+        
+        print(f" {Color.YELLOW}Puerto SSH: {ssh_port}{Color.END}")
+        
+        # Generar certificado AUTOFIRMADO
+        print(f" {Color.YELLOW}Generando certificado automático...{Color.END}")
+        subprocess.run(['openssl', 'genrsa', '-out', '/tmp/key.pem', '2048'], 
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # Datos del certificado (esto hace que sea automático)
+        cert_data = "US\nCalifornia\nSan Francisco\nMoraTech\nVPN\nvps.moratech.work\nadmin@moratech.work\n\n\n"
+        proc = subprocess.Popen(['openssl', 'req', '-new', '-x509', '-key', '/tmp/key.pem', 
+                                '-out', '/tmp/cert.pem', '-days', '3650'],
+                               stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, 
+                               stderr=subprocess.DEVNULL)
+        proc.communicate(input=cert_data.encode())
+        
+        # Combinar certificados
+        with open('/tmp/key.pem', 'r') as f1, open('/tmp/cert.pem', 'r') as f2:
+            combined = f1.read() + f2.read()
+        
+        with open('/etc/stunnel/stunnel.pem', 'w') as f:
+            f.write(combined)
+        
+        subprocess.run(['chmod', '600', '/etc/stunnel/stunnel.pem'])
+        
+        # Configuración stunnel SIN protocol
         stunnel_conf = f"""cert = /etc/stunnel/stunnel.pem
-chroot = /
-setuid = stunnel4
-setgid = stunnel4
+client = no
 socket = a:SO_REUSEADDR=1
 socket = l:TCP_NODELAY=1
 socket = r:TCP_NODELAY=1
-foreground = no
 
-[ssh]
-accept = 0.0.0.0:{port}
+[stunnel]
+accept = {port}
 connect = 127.0.0.1:{ssh_port}
-protocol = connect
 """
+        
         with open('/etc/stunnel/stunnel.conf', 'w') as f:
             f.write(stunnel_conf)
-        os.chmod('/etc/stunnel/stunnel.conf', 0o644)
-
-        # Generar PEM auto-firmado en un solo archivo
-        print(f" {Color.YELLOW}Generando certificado auto-firmado...{Color.END}")
-        subj = "/C=BR/ST=BR/L=USS/O=moratech/OU=IT/CN=moratech/emailAddress=info@moratech.com"
-        pem_path = '/etc/stunnel/stunnel.pem'
-        subprocess.run(['openssl','req','-new','-x509','-nodes','-days','1095','-subj',subj,'-out',pem_path,'-keyout',pem_path],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        os.chmod(pem_path, 0o600)
-        shutil.chown(pem_path, user='root', group='root')
-
-        # Habilitar servicio en defaults (si existe)
-        if os.path.exists('/etc/default/stunnel4'):
-            with open('/etc/default/stunnel4','r') as f:
-                s = f.read()
-            s = s.replace('ENABLED=0','ENABLED=1')
-            with open('/etc/default/stunnel4','w') as f:
-                f.write(s)
-
-        # Reiniciar + habilitar servicio
-        print(f" {Color.YELLOW}Iniciando stunnel4...{Color.END}")
-        subprocess.run(['systemctl','daemon-reload'])
-        subprocess.run(['systemctl','enable','--now','stunnel4'])
-        time.sleep(1)
-        status = subprocess.run(['systemctl','is-active','stunnel4'], capture_output=True, text=True)
-        if status.stdout.strip() == 'active':
-            print(f" {Color.GREEN}✓ Stunnel iniciado correctamente{Color.END}")
-        else:
-            print(f" {Color.YELLOW}⚠ Verificar status de stunnel (journalctl -u stunnel4){Color.END}")
-
-        # Abrir puerto en firewall (ufw preferido)
-        if shutil.which('ufw'):
-            subprocess.run(['ufw','allow', port])
-        else:
-            subprocess.run(['iptables','-I','INPUT','-p','tcp','--dport',port,'-j','ACCEPT'])
-            subprocess.run(['iptables-save'])
-
-        # Configurar forwarding/NAT
-        print(f" {Color.YELLOW}Configurando forwarding/NAT...{Color.END}")
-        if configure_forwarding():
-            print(f" {Color.GREEN}✓ Forwarding/NAT configurado{Color.END}")
-        else:
-            print(f" {Color.YELLOW}⚠ No se pudo configurar forwarding automáticamente{Color.END}")
-
-        # Comprobar escucha con ss
-        time.sleep(1)
-        ss_check = subprocess.run(['ss','-tlnp'], capture_output=True, text=True)
-        if f":{port}" in ss_check.stdout and 'stunnel' in ss_check.stdout:
-            print(f" {Color.GREEN}✓ Puerto {port} escuchando correctamente{Color.END}")
-        else:
-            print(f" {Color.YELLOW}⚠ Verificar puerto {port} con: ss -tlnp{Color.END}")
-
-        # Guardar en PROTOCOLS_FILE
-        try:
-            if os.path.exists(PROTOCOLS_FILE):
-                with open(PROTOCOLS_FILE,'r') as f:
-                    protocols = json.load(f)
-                protocols.setdefault('ssl',{})
-                protocols['ssl']['enabled'] = True
-                protocols['ssl']['port'] = int(port)
-                with open(PROTOCOLS_FILE,'w') as f:
-                    json.dump(protocols,f,indent=4)
-        except Exception:
-            print("No se pudo actualizar PROTOCOLS_FILE (permisos/ruta).")
-
-        # Mostrar host/puerto
-        try:
-            host_ip = subprocess.check_output(['hostname','-I']).decode().split()[0]
-        except:
-            host_ip = 'IP-desconocida'
-        print(f"\n {Color.GREEN}✓ SSL instalado correctamente en puerto {port}{Color.END}")
-        print(f" {Color.CYAN}Puedes conectarte usando:{Color.END}")
-        print(f" {Color.YELLOW}Host: {host_ip}{Color.END}")
-        print(f" {Color.YELLOW}Puerto: {port}{Color.END}")
+        
+        # Habilitar stunnel
+        subprocess.run(['sed', '-i', 's/ENABLED=0/ENABLED=1/g', '/etc/default/stunnel4'])
+        
+        # Iniciar
+        print(f" {Color.YELLOW}Iniciando servicios...{Color.END}")
+        subprocess.run(['service', 'stunnel4', 'start'], stderr=subprocess.DEVNULL)
+        
+        import time
+        time.sleep(2)
+        
+        # Verificar
+        result = subprocess.run(['systemctl', 'status', 'stunnel4'], capture_output=True, text=True)
+        if 'active (running)' in result.stdout:
+            print(f" {Color.GREEN}✓ Stunnel iniciado{Color.END}")
+        
+        # Abrir puerto
+        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        subprocess.run(['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'])
+        
+        # Forwarding
+        print(f" {Color.YELLOW}Configurando forwarding...{Color.END}")
+        configure_forwarding()
+        print(f" {Color.GREEN}✓ Forwarding configurado{Color.END}")
+        
+        # Guardar
+        with open(PROTOCOLS_FILE, 'r') as f:
+            protocols = json.load(f)
+        
+        protocols['ssl']['enabled'] = True
+        protocols['ssl']['port'] = int(port)
+        
+        with open(PROTOCOLS_FILE, 'w') as f:
+            json.dump(protocols, f, indent=4)
+        
+        subprocess.run(['rm', '-f', '/tmp/key.pem', '/tmp/cert.pem'])
+        
+        print(f"\n {Color.GREEN}✓ SSL instalado con certificado automático{Color.END}")
+        print(f" {Color.CYAN}Puerto: {port}{Color.END}")
         log_action("admin", f"SSL configurado en puerto {port}")
-
+        
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        import traceback
         traceback.print_exc()
-
+    
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
 
 def stop_ssl():
     """Detener SSL/Stunnel"""
