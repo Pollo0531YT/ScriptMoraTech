@@ -37,18 +37,20 @@ def clear_screen():
     """Limpia la pantalla"""
     os.system('clear')
 
+def print_line():
+    """Imprime línea decorativa"""
+    print(f"{Color.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Color.END}")
+
 def print_banner():
     """Muestra el banner de Moratech"""
     banner = f"""
 {Color.PURPLE}{Color.BOLD}
-╔══════════════════════════════════════════════════════════╗
-║    ███╗   ███╗ ██████╗ ██████╗  █████╗ ████████╗███████╗║
-║    ████╗ ████║██╔═══██╗██╔══██╗██╔══██╗╚══██╔══╝██╔════╝║
-║    ██╔████╔██║██║   ██║██████╔╝███████║   ██║   █████╗  ║
-║    ██║╚██╔╝██║██║   ██║██╔══██╗██╔══██║   ██║   ██╔══╝  ║
-║    ██║ ╚═╝ ██║╚██████╔╝██║  ██║██║  ██║   ██║   ███████╗║
-║    ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚══════╝║
-╚══════════════════════════════════════════════════════════╝
+    ███╗   ███╗ ██████╗ ██████╗  █████╗ ████████╗███████╗
+    ████╗ ████║██╔═══██╗██╔══██╗██╔══██╗╚══██╔══╝██╔════╝
+    ██╔████╔██║██║   ██║██████╔╝███████║   ██║   █████╗  
+    ██║╚██╔╝██║██║   ██║██╔══██╗██╔══██║   ██║   ██╔══╝  
+    ██║ ╚═╝ ██║╚██████╔╝██║  ██║██║  ██║   ██║   ███████╗
+    ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚══════╝
 {Color.END}"""
     print(banner)
 
@@ -63,6 +65,9 @@ def get_system_info():
                     info['os'] = line.split('=')[1].strip().strip('"')
                     break
         
+        # Arquitectura
+        info['arch'] = subprocess.check_output("uname -m", shell=True).decode().strip()
+        
         # CPUs
         info['cpus'] = subprocess.check_output("nproc", shell=True).decode().strip()
         
@@ -73,10 +78,24 @@ def get_system_info():
             info['ip'] = "No disponible"
         
         # Fecha actual
-        info['date'] = datetime.now().strftime("%d/%m/%Y %H:%M:%S")
+        info['date'] = datetime.now().strftime("%d/%m/%Y-%H:%M")
         
         # Hostname
         info['hostname'] = socket.gethostname()
+        
+        # RAM
+        mem = subprocess.check_output("free -m", shell=True).decode().split('\n')[1].split()
+        info['ram_total'] = f"{float(mem[1])/1024:.1f}G"
+        info['ram_used'] = f"{mem[2]}M"
+        info['ram_free'] = f"{float(mem[3])/1024:.1f}G"
+        info['ram_percent'] = f"{(int(mem[2])/int(mem[1])*100):.2f}%"
+        
+        # CPU usage
+        try:
+            cpu = subprocess.check_output("top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'", shell=True).decode().strip()
+            info['cpu_percent'] = f"{float(cpu):.1f}%"
+        except:
+            info['cpu_percent'] = "N/A"
         
     except Exception as e:
         print(f"{Color.RED}Error obteniendo info del sistema: {e}{Color.END}")
@@ -202,62 +221,54 @@ def show_dashboard():
     info = get_system_info()
     ports = get_active_ports()
     
-    print(f"\n{Color.CYAN}╔══════════════════════════════════════════════════════════╗{Color.END}")
-    print(f"{Color.CYAN}║              INFORMACIÓN DEL SISTEMA                     ║{Color.END}")
-    print(f"{Color.CYAN}╚══════════════════════════════════════════════════════════╝{Color.END}\n")
+    print_line()
+    print(f" {Color.CYAN}∘{Color.END} S.O: {Color.GREEN}{info.get('os', 'N/A')}{Color.END}  {Color.CYAN}∘{Color.END} Base:{Color.GREEN}{info.get('arch', 'N/A')}{Color.END} {Color.CYAN}∘{Color.END} CPU's:{Color.GREEN}{info.get('cpus', 'N/A')}{Color.END}")
+    print(f" {Color.CYAN}∘{Color.END} IP: {Color.GREEN}{info.get('ip', 'N/A')}{Color.END}  {Color.CYAN}∘{Color.END} FECHA: {Color.GREEN}{info.get('date', 'N/A')}{Color.END}")
+    print_line()
+    print(f" Key: {Color.GREEN}Verified{Color.END}【 {Color.YELLOW}MoraTech©{Color.END} 】(V2.0) ► {Color.CYAN}[{info.get('hostname', 'N/A')}]{Color.END}")
+    print_line()
     
-    print(f"{Color.GREEN}SO:{Color.END} {info.get('os', 'N/A')}")
-    print(f"{Color.GREEN}CPUs:{Color.END} {info.get('cpus', 'N/A')} cores")
-    print(f"{Color.GREEN}IP:{Color.END} {info.get('ip', 'N/A')}")
-    print(f"{Color.GREEN}Fecha:{Color.END} {info.get('date', 'N/A')}")
-    print(f"{Color.GREEN}Hostname:{Color.END} {info.get('hostname', 'N/A')}")
+    # Puertos en formato de 2 columnas
+    port_list = list(ports.items())
+    for i in range(0, len(port_list), 2):
+        left = port_list[i]
+        right = port_list[i+1] if i+1 < len(port_list) else ("", "")
+        
+        left_status = f"{Color.GREEN}{left[1]}{Color.END}" if '✓' in left[1] else f"{Color.YELLOW}{left[1]}{Color.END}"
+        right_status = f"{Color.GREEN}{right[1]}{Color.END}" if right[1] and '✓' in right[1] else f"{Color.YELLOW}{right[1]}{Color.END}" if right[1] else ""
+        
+        left_text = f" {Color.CYAN}∘{Color.END} {left[0]}: {left_status}"
+        right_text = f"{Color.CYAN}∘{Color.END} {right[0]}: {right_status}" if right[0] else ""
+        
+        print(f"{left_text:<45} {right_text}")
     
-    print(f"\n{Color.CYAN}╔══════════════════════════════════════════════════════════╗{Color.END}")
-    print(f"{Color.CYAN}║                 PUERTOS ACTIVOS                          ║{Color.END}")
-    print(f"{Color.CYAN}╚══════════════════════════════════════════════════════════╝{Color.END}\n")
-    
-    for protocol, port in ports.items():
-        status = f"{Color.GREEN}{port}{Color.END}" if '✓' in port else f"{Color.YELLOW}{port}{Color.END}"
-        print(f"{Color.BLUE}{protocol}:{Color.END} {status}")
+    print_line()
+    print(f" {Color.CYAN}∘{Color.END} TOTAL: {Color.GREEN}{info.get('ram_total', 'N/A')}{Color.END} {Color.CYAN}∘{Color.END} M|LIBRE: {Color.GREEN}{info.get('ram_free', 'N/A')}{Color.END}  {Color.CYAN}∘{Color.END} EN USO: {Color.GREEN}{info.get('ram_used', 'N/A')}{Color.END}")
+    print(f" {Color.CYAN}∘{Color.END} U/RAM: {Color.GREEN}{info.get('ram_percent', 'N/A')}{Color.END}  {Color.CYAN}∘{Color.END} U/CPU: {Color.GREEN}{info.get('cpu_percent', 'N/A')}{Color.END}")
+    print_line()
 
 def login():
     """Sistema de login"""
     clear_screen()
     print_banner()
-    print(f"\n{Color.CYAN}╔═══════════════════════════════════════╗{Color.END}")
-    print(f"{Color.CYAN}║          INICIO DE SESIÓN             ║{Color.END}")
-    print(f"{Color.CYAN}╚═══════════════════════════════════════╝{Color.END}\n")
+    print_line()
+    print(f" {Color.CYAN}INICIO DE SESIÓN{Color.END}")
+    print_line()
     
     users = load_users()
     max_attempts = 3
     
     for attempt in range(max_attempts):
-        username = input(f"{Color.GREEN}Usuario: {Color.END}").strip()
+        # Usuario visible
+        username = input(f"\n {Color.GREEN}Usuario:{Color.END} ").strip()
         
-        # Mostrar contraseña mientras se escribe
-        import sys
-        password = ""
-        print(f"{Color.GREEN}Contraseña: {Color.END}", end='', flush=True)
-        
-        while True:
-            char = sys.stdin.read(1)
-            if char == '\n':
-                break
-            elif char == '\x7f':  # Backspace
-                if password:
-                    password = password[:-1]
-                    sys.stdout.write('\b \b')
-                    sys.stdout.flush()
-            else:
-                password += char
-                sys.stdout.write(char)
-                sys.stdout.flush()
-        print()
+        # Contraseña visible
+        password = input(f" {Color.GREEN}Contraseña:{Color.END} ").strip()
         
         password_hash = hashlib.sha256(password.encode()).hexdigest()
         
         if username in users and users[username]['password'] == password_hash:
-            print(f"\n{Color.GREEN}✓ Login exitoso!{Color.END}")
+            print(f"\n {Color.GREEN}✓ Login exitoso!{Color.END}")
             log_action(username, "Login exitoso")
             import time
             time.sleep(1)
@@ -265,7 +276,9 @@ def login():
         else:
             remaining = max_attempts - attempt - 1
             if remaining > 0:
-                print(f"{Color.RED}✗ Credenciales incorrectas. Intentos restantes: {remaining}{Color.END}\n")
+                print(f" {Color.RED}✗ Credenciales incorrectas. Intentos restantes: {remaining}{Color.END}")
+    
+    return None
     
     return None
 
@@ -305,24 +318,7 @@ def add_ssh_user():
         return
     
     # Contraseña visible
-    import sys
-    password = ""
-    print(f"{Color.GREEN}Contraseña: {Color.END}", end='', flush=True)
-    
-    while True:
-        char = sys.stdin.read(1)
-        if char == '\n':
-            break
-        elif char == '\x7f':
-            if password:
-                password = password[:-1]
-                sys.stdout.write('\b \b')
-                sys.stdout.flush()
-        else:
-            password += char
-            sys.stdout.write(char)
-            sys.stdout.flush()
-    print()
+    password = input(f"{Color.GREEN}Contraseña: {Color.END}").strip()
     
     # Días
     days = input(f"{Color.GREEN}Días de duración (0 = ilimitado): {Color.END}").strip()
@@ -365,24 +361,8 @@ def add_token_user():
     if not token_config.get('token_password'):
         print(f"{Color.YELLOW}No hay contraseña configurada para tokens.{Color.END}\n")
         
-        import sys
-        token_pass = ""
-        print(f"{Color.GREEN}Contraseña maestra para tokens: {Color.END}", end='', flush=True)
-        
-        while True:
-            char = sys.stdin.read(1)
-            if char == '\n':
-                break
-            elif char == '\x7f':
-                if token_pass:
-                    token_pass = token_pass[:-1]
-                    sys.stdout.write('\b \b')
-                    sys.stdout.flush()
-            else:
-                token_pass += char
-                sys.stdout.write(char)
-                sys.stdout.flush()
-        print()
+        # Contraseña visible
+        token_pass = input(f"{Color.GREEN}Contraseña maestra para tokens: {Color.END}").strip()
         
         token_config['token_password'] = hashlib.sha256(token_pass.encode()).hexdigest()
         save_token_config(token_config)
@@ -561,38 +541,38 @@ def users_menu():
     """Menú de control de usuarios"""
     while True:
         show_dashboard()
-        print(f"\n{Color.CYAN}╔══════════════════════════════════════════════════════════╗{Color.END}")
-        print(f"{Color.CYAN}║              CONTROL DE USUARIOS                         ║{Color.END}")
-        print(f"{Color.CYAN}╚══════════════════════════════════════════════════════════╝{Color.END}\n")
+        print(f" {Color.CYAN}CONTROL DE USUARIOS{Color.END}")
+        print_line()
+        print(f" {Color.GREEN}[01]{Color.END} ➮ Agregar usuario (SSH/TOKEN)")
+        print(f" {Color.GREEN}[02]{Color.END} ➮ Borrar usuario")
+        print(f" {Color.GREEN}[03]{Color.END} ➮ Editar/Renovar usuario")
+        print(f" {Color.GREEN}[04]{Color.END} ➮ Mostrar usuarios")
+        print(f" {Color.GREEN}[09]{Color.END} ➮ Backup de usuarios")
+        print(f" {Color.GREEN}[10]{Color.END} ➮ CheckUser Online")
+        print(f" {Color.GREEN}[11]{Color.END} ➮ Bot Telegram")
+        print_line()
+        print(f" {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}Volver{Color.END}")
+        print_line()
         
-        print(f"{Color.GREEN}1.{Color.END} Agregar usuario")
-        print(f"{Color.GREEN}2.{Color.END} Borrar usuario")
-        print(f"{Color.GREEN}3.{Color.END} Editar/Renovar usuario")
-        print(f"{Color.GREEN}4.{Color.END} Mostrar usuarios")
-        print(f"{Color.GREEN}9.{Color.END} Backup de usuarios")
-        print(f"{Color.GREEN}10.{Color.END} CheckUser Online")
-        print(f"{Color.GREEN}11.{Color.END} Bot Telegram")
-        print(f"{Color.GREEN}0.{Color.END} Volver al menú principal")
+        choice = input(f" {Color.CYAN}►{Color.END} Opción: ").strip()
         
-        choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
-        
-        if choice == '1':
+        if choice == '1' or choice == '01':
             add_user()
-        elif choice == '2':
+        elif choice == '2' or choice == '02':
             delete_users_menu()
-        elif choice == '3':
+        elif choice == '3' or choice == '03':
             edit_user()
-        elif choice == '4':
+        elif choice == '4' or choice == '04':
             show_users()
-        elif choice == '9':
-            print(f"\n{Color.YELLOW}Función en desarrollo...{Color.END}")
-            input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+        elif choice == '9' or choice == '09':
+            print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
         elif choice == '10':
-            print(f"\n{Color.YELLOW}Función en desarrollo...{Color.END}")
-            input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+            print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
         elif choice == '11':
-            print(f"\n{Color.YELLOW}Función en desarrollo...{Color.END}")
-            input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+            print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
         elif choice == '0':
             break
 
@@ -627,24 +607,32 @@ def main_menu(username):
     """Menú principal"""
     while True:
         show_dashboard()
-        print(f"\n{Color.GREEN}Usuario:{Color.END} {username}")
-        print(f"\n{Color.CYAN}╔══════════════════════════════════════════════════════════╗{Color.END}")
-        print(f"{Color.CYAN}║                  MENÚ PRINCIPAL                          ║{Color.END}")
-        print(f"{Color.CYAN}╚══════════════════════════════════════════════════════════╝{Color.END}\n")
+        print(f" {Color.GREEN}[01]{Color.END} ➮ CONTROL USUARIOS (SSH/TOKEN)")
+        print(f" {Color.GREEN}[02]{Color.END} ➮ INSTALADOR DE PROTOCOLOS")
+        print(f" {Color.GREEN}[03]{Color.END} ➮ OPTIMIZAR VPS")
+        print(f" {Color.GREEN}[04]{Color.END} ➮ ESTADÍSTICAS Y LOGS")
+        print_line()
+        print(f" {Color.GREEN}[05]{Color.END} ➮ UPDATE / REMOVE  |  {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}[ SALIR ]{Color.END}")
+        print_line()
         
-        print(f"{Color.GREEN}1.{Color.END} Control de Usuarios")
-        print(f"{Color.GREEN}2.{Color.END} Protocolos")
-        print(f"{Color.GREEN}0.{Color.END} Salir")
+        choice = input(f" {Color.CYAN}►{Color.END} Opción: ").strip()
         
-        choice = input(f"\n{Color.YELLOW}Selecciona una opción: {Color.END}").strip()
-        
-        if choice == '1':
+        if choice == '1' or choice == '01':
             users_menu()
-        elif choice == '2':
+        elif choice == '2' or choice == '02':
             protocols_menu()
+        elif choice == '3' or choice == '03':
+            print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        elif choice == '4' or choice == '04':
+            print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        elif choice == '5' or choice == '05':
+            print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
         elif choice == '0':
             log_action(username, "Logout")
-            print(f"\n{Color.GREEN}¡Hasta pronto!{Color.END}\n")
+            print(f"\n {Color.GREEN}¡Hasta pronto!{Color.END}\n")
             sys.exit(0)
 
 def main():
@@ -658,13 +646,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    # Configurar terminal para leer caracteres individuales
-    import tty
-    import termios
-    
-    old_settings = termios.tcgetattr(sys.stdin)
-    try:
-        tty.setcbreak(sys.stdin.fileno())
-        main()
-    finally:
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, old_settings)
+    main()
