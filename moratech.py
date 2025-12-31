@@ -813,10 +813,11 @@ socket = r:TCP_NODELAY=1
 connect = 127.0.0.1:{ssh_port}
 accept = {port}
 
-[stunnel-ssl]
-cert = /etc/stunnel/stunnel.pem
-accept = {port}
+[ssh-tls]
 connect = 127.0.0.1:{ssh_port}
+accept = {port}
+cert = /etc/stunnel/stunnel.pem
+TIMEOUTclose = 0
 """
         
         with open('/etc/stunnel/stunnel.conf', 'w') as f:
