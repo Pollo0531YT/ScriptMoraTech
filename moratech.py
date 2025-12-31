@@ -731,7 +731,7 @@ def menu_ssl():
             input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def install_ssl():
-    """Instalar SSL con Let's Encrypt (certificado real)"""
+    """Instalar SSL con Let's Encrypt (igual a la que funciona)"""
     clear_screen()
     print_banner()
     print_line()
@@ -748,9 +748,13 @@ def install_ssl():
     if not port:
         port = "443"
     
-    print(f"\n {Color.YELLOW}Instalando SSL con certificado real...{Color.END}")
+    print(f"\n {Color.YELLOW}Instalando SSL con certificado Let's Encrypt...{Color.END}")
     
     try:
+        # Detener servicios anteriores
+        subprocess.run(['pkill', '-f', 'stunnel4'], stderr=subprocess.DEVNULL)
+        subprocess.run(['service', 'stunnel4', 'stop'], stderr=subprocess.DEVNULL)
+        
         # Instalar stunnel y certbot
         print(f" {Color.YELLOW}Instalando paquetes...{Color.END}")
         subprocess.run(['apt-get', 'update'], stdout=subprocess.DEVNULL)
@@ -766,7 +770,6 @@ def install_ssl():
         
         # Obtener certificado
         print(f" {Color.YELLOW}Obteniendo certificado SSL para {domain}...{Color.END}")
-        print(f" {Color.YELLOW}Esto puede tardar unos segundos...{Color.END}")
         
         result = subprocess.run([
             'certbot', 'certonly', '--standalone', 
@@ -789,39 +792,49 @@ def install_ssl():
         cert_path = f"/etc/letsencrypt/live/{domain}/fullchain.pem"
         key_path = f"/etc/letsencrypt/live/{domain}/privkey.pem"
         
-        with open(cert_path, 'r') as f1, open(key_path, 'r') as f2:
-            combined = f1.read() + f2.read()
-        
-        with open('/etc/stunnel/stunnel.pem', 'w') as f:
-            f.write(combined)
+        subprocess.run([
+            'bash', '-c',
+            f'cat {cert_path} {key_path} > /etc/stunnel/stunnel.pem'
+        ])
         
         subprocess.run(['chmod', '600', '/etc/stunnel/stunnel.pem'])
         
         # Obtener puerto SSH
         ssh_port = '22'
         
-        # Configuración stunnel
-        stunnel_conf = f"""pid = /var/run/stunnel.pid
-output = /var/log/stunnel4/stunnel.log
+        # Configuración stunnel EXACTA como la máquina que funciona
+        stunnel_conf = f"""cert = /etc/stunnel/stunnel.pem
+client = no
+socket = a:SO_REUSEADDR=1
+socket = l:TCP_NODELAY=1
+socket = r:TCP_NODELAY=1
 
-[ssh-tls]
+[stunnel]
+connect = 127.0.0.1:{ssh_port}
+accept = {port}
+
+[stunnel-ssl]
+cert = /etc/stunnel/stunnel.pem
 accept = {port}
 connect = 127.0.0.1:{ssh_port}
-cert = /etc/stunnel/stunnel.pem
-TIMEOUTclose = 0
 """
         
         with open('/etc/stunnel/stunnel.conf', 'w') as f:
             f.write(stunnel_conf)
         
-        # Habilitar stunnel
-        subprocess.run(['sed', '-i', 's/ENABLED=0/ENABLED=1/g', '/etc/default/stunnel4'])
+        # Configurar /etc/default/stunnel4
+        with open('/etc/default/stunnel4', 'r') as f:
+            content = f.read()
+        
+        if 'FILES="/etc/stunnel/*.conf"' not in content:
+            with open('/etc/default/stunnel4', 'a') as f:
+                f.write('\nFILES="/etc/stunnel/*.conf"\n')
         
         # Iniciar
         print(f" {Color.YELLOW}Iniciando Stunnel...{Color.END}")
         subprocess.run(['systemctl', 'daemon-reload'])
         subprocess.run(['systemctl', 'restart', 'stunnel4'])
-        subprocess.run(['systemctl', 'enable', 'stunnel4'])
+        subprocess.run(['systemctl', 'enable', 'stunnel4'], stderr=subprocess.DEVNULL)
         
         time.sleep(2)
         
@@ -856,18 +869,19 @@ TIMEOUTclose = 0
         with open(PROTOCOLS_FILE, 'w') as f:
             json.dump(protocols, f, indent=4)
         
-        print(f"\n {Color.GREEN}✓ SSL instalado con Let's Encrypt{Color.END}")
+        print(f"\n {Color.GREEN}✓ SSL Let's Encrypt instalado exitosamente{Color.END}")
         print(f" {Color.CYAN}Dominio: {domain}{Color.END}")
         print(f" {Color.CYAN}Puerto: {port}{Color.END}")
         print(f" {Color.YELLOW}Certificado válido por 90 días{Color.END}")
-        log_action("admin", f"SSL Let's Encrypt configurado en {domain}:{port}")
+        log_action("admin", f"SSL Let's Encrypt: {domain}:{port}")
         
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
         import traceback
         traceback.print_exc()
     
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")  
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
 def stop_ssl():
     """Detener SSL/Stunnel"""
     clear_screen()
