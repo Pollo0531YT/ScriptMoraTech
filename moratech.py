@@ -689,12 +689,19 @@ def menu_ssl():
         print(f" {Color.CYAN}SSL{Color.END}")
         print_line()
 
-                # Mostrar estado actual
+        # Mostrar estado actual
         try:
             with open(PROTOCOLS_FILE, 'r') as f:
                 protocols = json.load(f)
-            ssl_status = f"{Color.GREEN}ACTIVO{Color.END}" if protocols.get('ssl', {}).get('enabled') else f"{Color.YELLOW}INACTIVO{Color.END}"
-            print(f" SSL: {ssl_status}")
+            
+            # SSL Status
+            if protocols.get('ssl', {}).get('enabled'):
+                ssl_port = protocols['ssl']['port']
+                ssl_status = f"{Color.GREEN}ACTIVO - Puerto {ssl_port}{Color.END}"
+            else:
+                ssl_status = f"{Color.YELLOW}INACTIVO{Color.END}"
+    
+            print(f" {Color.CYAN}∘{Color.END} SSL: {ssl_status}")
             print_line()
         except:
             pass
@@ -891,12 +898,20 @@ def menu_phyton():
         print(f" {Color.CYAN}SSL{Color.END}")
         print_line()
 
-                # Mostrar estado actual
+        # Mostrar estado actual
         try:
             with open(PROTOCOLS_FILE, 'r') as f:
                 protocols = json.load(f)
-            proxy_status = f"{Color.GREEN}ACTIVO{Color.END}" if protocols.get('proxy', {}).get('enabled') else f"{Color.YELLOW}INACTIVO{Color.END}"
-            print(f" Phyton: {proxy_status}")
+            
+           
+            # Proxy Status
+            if protocols.get('proxy', {}).get('enabled'):
+                proxy_port = protocols['proxy']['port']
+                proxy_status = f"{Color.GREEN}ACTIVO - Puerto {proxy_port}{Color.END}"
+            else:
+                proxy_status = f"{Color.YELLOW}INACTIVO{Color.END}"
+            
+            print(f" {Color.CYAN}∘{Color.END} Phyton: {proxy_status}")
             print_line()
         except:
             pass
@@ -1369,6 +1384,7 @@ def configure_forwarding():
         return True
     except:
         return False
+
 # ==================== MENÚ PRINCIPAL ====================
 
 def main_menu(username):
