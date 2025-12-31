@@ -689,18 +689,27 @@ def menu_ssl():
         print(f" {Color.CYAN}SSL{Color.END}")
         print_line()
 
-        # Mostrar estado actual
+
+        # Mostrar estado actual - DETECCIÓN AUTOMÁTICA
         try:
-            with open(PROTOCOLS_FILE, 'r') as f:
-                protocols = json.load(f)
+            result = subprocess.run(['ss', '-tulpn'], capture_output=True, text=True)
+            output = result.stdout
             
-            # SSL Status
-            if protocols.get('ssl', {}).get('enabled'):
-                ssl_port = protocols['ssl']['port']
-                ssl_status = f"{Color.GREEN}ACTIVO - Puerto {ssl_port}{Color.END}"
+            # Detectar todos los puertos SSL/Stunnel
+            ssl_ports = []
+            for line in output.split('\n'):
+                if 'stunnel' in line:
+                    import re
+                    match = re.search(r':(\d+)\s', line)
+                    if match:
+                        ssl_ports.append(match.group(1))
+            
+            if ssl_ports:
+                ports_str = ", ".join(ssl_ports)
+                ssl_status = f"{Color.GREEN}ACTIVO - Puerto(s) {ports_str}{Color.END}"
             else:
                 ssl_status = f"{Color.YELLOW}INACTIVO{Color.END}"
-    
+        
             print(f" {Color.CYAN}∘{Color.END} SSL: {ssl_status}")
             print_line()
         except:
@@ -898,16 +907,25 @@ def menu_phyton():
         print(f" {Color.CYAN}SSL{Color.END}")
         print_line()
 
-        # Mostrar estado actual
+        # Mostrar estado actual - DETECCIÓN AUTOMÁTICA
         try:
-            with open(PROTOCOLS_FILE, 'r') as f:
-                protocols = json.load(f)
+            result = subprocess.run(['ss', '-tulpn'], capture_output=True, text=True)
+            output = result.stdout
             
-           
-            # Proxy Status
-            if protocols.get('proxy', {}).get('enabled'):
-                proxy_port = protocols['proxy']['port']
-                proxy_status = f"{Color.GREEN}ACTIVO - Puerto {proxy_port}{Color.END}"
+            # Detectar Proxy Python
+            proxy_ports = []
+            proxy_check = subprocess.run(['pgrep', '-f', 'proxy.py'], capture_output=True, text=True)
+            if proxy_check.stdout.strip():
+                for line in output.split('\n'):
+                    if 'python' in line.lower():
+                        import re
+                        match = re.search(r':(\d+)\s', line)
+                        if match and match.group(1) not in ['22']:
+                            proxy_ports.append(match.group(1))
+            
+            if proxy_ports:
+                ports_str = ", ".join(set(proxy_ports))
+                proxy_status = f"{Color.GREEN}ACTIVO - Puerto(s) {ports_str}{Color.END}"
             else:
                 proxy_status = f"{Color.YELLOW}INACTIVO{Color.END}"
             
