@@ -103,14 +103,7 @@ def get_system_info():
     return info
 
 def get_active_ports():
-    """Obtiene puertos activos"""
-    # Leer configuración de protocolos
-    try:
-        with open(PROTOCOLS_FILE, 'r') as f:
-            protocols_config = json.load(f)
-    except:
-        protocols_config = {}
-    
+    """Obtiene puertos activos - DETECCIÓN AUTOMÁTICA"""
     ports = {
         'SSH': '22',
         'SSL': '-',
@@ -121,36 +114,62 @@ def get_active_ports():
     }
     
     try:
-        # Verificar SSH
         result = subprocess.run(['ss', '-tulpn'], capture_output=True, text=True)
         output = result.stdout
         
+        # Detectar SSH
         if ':22 ' in output or ':22\n' in output:
             ports['SSH'] = '22 ✓'
         
-        # Verificar SSL
-        if protocols_config.get('ssl', {}).get('enabled'):
-            ssl_port = protocols_config['ssl']['port']
-            if f':{ssl_port} ' in output or f':{ssl_port}\n' in output:
-                ports['SSL'] = f'{ssl_port} ✓'
-            else:
-                ports['SSL'] = f'{ssl_port}'
+        # Detectar SSL/Stunnel (busca stunnel en proceso)
+        stunnel_check = subprocess.run(['pgrep', '-f', 'stunnel'], capture_output=True, text=True)
+        if stunnel_check.stdout.strip():
+            # Encontrar puerto de stunnel
+            for line in output.split('\n'):
+                if 'stunnel' in line:
+                    if ':443 ' in line or ':443\n' in line:
+                        ports['SSL'] = '443 ✓'
+                        break
+                    elif ':444 ' in line or ':444\n' in line:
+                        ports['SSL'] = '444 ✓'
+                        break
+                    # Buscar cualquier puerto
+                    import re
+                    match = re.search(r':(\d+)\s', line)
+                    if match:
+                        ports['SSL'] = f"{match.group(1)} ✓"
+                        break
         
-        # Verificar BadVPN
-        if protocols_config.get('badvpn', {}).get('enabled'):
-            badvpn_port = protocols_config['badvpn']['port']
-            ports['BadVPN'] = f'{badvpn_port}'
+        # Detectar Proxy Python (busca pythonwe o proxy.py)
+        proxy_check = subprocess.run(['pgrep', '-f', 'proxy.py'], capture_output=True, text=True)
+        if proxy_check.stdout.strip():
+            # Buscar puerto 80
+            if ':80 ' in output or ':80\n' in output:
+                if 'python' in output:
+                    ports['Proxy'] = '80 ✓'
+            # Buscar otros puertos python
+            for line in output.split('\n'):
+                if 'python' in line.lower():
+                    import re
+                    match = re.search(r':(\d+)\s', line)
+                    if match and match.group(1) not in ['22', '443']:
+                        ports['Proxy'] = f"{match.group(1)} ✓"
+                        break
         
-        # Verificar Proxy
-        if protocols_config.get('proxy', {}).get('enabled'):
-            proxy_port = protocols_config['proxy']['port']
-            ports['Proxy'] = f'{proxy_port}'
+        # Detectar BadVPN (puerto 7300/7200)
+        if ':7300 ' in output or ':7300\n' in output:
+            ports['BadVPN'] = '7300 ✓'
+        elif ':7200 ' in output or ':7200\n' in output:
+            ports['BadVPN'] = '7200 ✓'
+        
+        # Detectar SlowDNS (puerto 5300)
+        if ':5300 ' in output or ':5300\n' in output:
+            ports['SlowDNS'] = '5300 ✓'
             
     except Exception as e:
         pass
     
     return ports
-
 def init_system():
     """Inicializa el sistema"""
     CONFIG_DIR.mkdir(exist_ok=True)
