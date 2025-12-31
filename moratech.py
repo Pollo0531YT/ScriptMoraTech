@@ -1610,18 +1610,22 @@ def install_badvpn():
         # Guardar en config
         with open(PROTOCOLS_FILE, 'r') as f:
             protocols = json.load(f)
-        
+
         if 'badvpn' not in protocols:
-            protocols['badvpn'] = {'ports': []}
-        
+            protocols['badvpn'] = {'enabled': False, 'ports': []}
+
+        # Asegurar que 'ports' existe
+        if 'ports' not in protocols['badvpn']:
+            protocols['badvpn']['ports'] = []
+
         if int(port) not in protocols['badvpn']['ports']:
             protocols['badvpn']['ports'].append(int(port))
-        
+
         protocols['badvpn']['enabled'] = True
-        
+
         with open(PROTOCOLS_FILE, 'w') as f:
             json.dump(protocols, f, indent=4)
-        
+
         print(f"\n {Color.GREEN}✓ BadVPN instalado en puerto {port}{Color.END}")
         print(f" {Color.CYAN}Para llamadas y juegos UDP{Color.END}")
         log_action("admin", f"BadVPN instalado en puerto {port}")
