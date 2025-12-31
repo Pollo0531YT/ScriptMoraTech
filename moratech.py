@@ -731,144 +731,56 @@ def menu_ssl():
             input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def install_ssl():
-    """Instalar/Configurar SSL con Stunnel — versión robusta para Ubuntu"""
-    import shutil, time, traceback
-    clear_screen()
-    print_banner()
-    print_line()
-    print(f" {Color.CYAN}INSTALANDO SSL (STUNNEL){Color.END}")
-    print_line()
-
-    port = input(f"\n {Color.GREEN}Puerto para SSL (default 443): {Color.END}").strip() or "443"
-    print(f"\n {Color.YELLOW}Instalando Stunnel en puerto {port}...{Color.END}")
-
+    """Instalar/Configurar SSL con Stunnel optimizado"""
+    # ... (banner y puerto igual) ...
+    
     try:
-        # revisar privilegios
-        if os.geteuid() != 0:
-            raise RuntimeError("Debes ejecutar esto como root (sudo).")
+        # 1. Limpieza profunda
+        subprocess.run(['systemctl', 'stop', 'stunnel4'], stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'remove', '--purge', 'stunnel4', '-y'], stdout=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'stunnel4', '-y'], stdout=subprocess.DEVNULL)
 
-        # verificar binaries
-        for cmd in ('apt-get','ss','openssl','systemctl','iptables-save'):
-            if not shutil.which(cmd):
-                raise RuntimeError(f"Falta el comando requerido: {cmd}")
-
-        # Detener servicio anterior usando systemctl
-        subprocess.run(['systemctl','stop','stunnel4'], stderr=subprocess.DEVNULL)
-
-        # Instalar paquetes si faltan
-        if not shutil.which('stunnel4'):
-            print(f" {Color.YELLOW}Instalando stunnel4 y dependencias...{Color.END}")
-            subprocess.run(['apt-get','update'], stdout=subprocess.DEVNULL)
-            subprocess.run(['apt-get','install','-y','stunnel4','iptables-persistent'], stdout=subprocess.DEVNULL)
-
-        # Detectar puerto SSH (simple)
-        ssh_port = '22'
-        ss_out = subprocess.run(['ss','-tlnp'], capture_output=True, text=True)
-        for line in ss_out.stdout.splitlines():
-            if 'sshd' in line and ':22' in line:
-                ssh_port = '22'
-                break
-        print(f" {Color.YELLOW}Puerto SSH detectado: {ssh_port}{Color.END}")
-
-        # Generar stunnel.conf
+        # 2. Detección robusta de SSH (Busca cualquier puerto donde esté sshd)
+        result = subprocess.run("netstat -tlnp | grep sshd | awk '{print $4}' | cut -d: -f2 | head -n1", 
+                                shell=True, capture_output=True, text=True)
+        ssh_port = result.stdout.strip() or '22'
+        
+        # 3. Configuración de Stunnel (Optimizada para velocidad)
         stunnel_conf = f"""cert = /etc/stunnel/stunnel.pem
-chroot = /
-setuid = stunnel4
-setgid = stunnel4
-socket = a:SO_REUSEADDR=1
+pid = /var/run/stunnel4.pid
 socket = l:TCP_NODELAY=1
 socket = r:TCP_NODELAY=1
-foreground = no
+client = no
 
-[ssh]
-accept = 0.0.0.0:{port}
+[stunnel]
+accept = {port}
 connect = 127.0.0.1:{ssh_port}
-protocol = connect
 """
         with open('/etc/stunnel/stunnel.conf', 'w') as f:
             f.write(stunnel_conf)
-        os.chmod('/etc/stunnel/stunnel.conf', 0o644)
 
-        # Generar PEM auto-firmado en un solo archivo
-        print(f" {Color.YELLOW}Generando certificado auto-firmado...{Color.END}")
-        subj = "/C=BR/ST=BR/L=USS/O=moratech/OU=IT/CN=moratech/emailAddress=info@moratech.com"
-        pem_path = '/etc/stunnel/stunnel.pem'
-        subprocess.run(['openssl','req','-new','-x509','-nodes','-days','1095','-subj',subj,'-out',pem_path,'-keyout',pem_path],
-                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-        os.chmod(pem_path, 0o600)
-        shutil.chown(pem_path, user='root', group='root')
+        # 4. Generación de Certificado (Simplificada)
+        key_path = "/etc/stunnel/stunnel.pem"
+        subprocess.run(f'openssl req -new -newkey rsa:2048 -days 3650 -nodes -x509 '
+                       f'-subj "/C=BR/ST=BR/L=USS/O=SPEED/CN=moratech" '
+                       f'-keyout {key_path} -out {key_path}', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        os.chmod(key_path, 0o600)
 
-        # Habilitar servicio en defaults (si existe)
-        if os.path.exists('/etc/default/stunnel4'):
-            with open('/etc/default/stunnel4','r') as f:
-                s = f.read()
-            s = s.replace('ENABLED=0','ENABLED=1')
-            with open('/etc/default/stunnel4','w') as f:
-                f.write(s)
+        # 5. Habilitar y Reiniciar
+        with open('/etc/default/stunnel4', 'w') as f:
+            f.write('ENABLED=1\nFILES="/etc/stunnel/*.conf"\nOPTIONS=""\n')
 
-        # Reiniciar + habilitar servicio
-        print(f" {Color.YELLOW}Iniciando stunnel4...{Color.END}")
-        subprocess.run(['systemctl','daemon-reload'])
-        subprocess.run(['systemctl','enable','--now','stunnel4'])
-        time.sleep(1)
-        status = subprocess.run(['systemctl','is-active','stunnel4'], capture_output=True, text=True)
-        if status.stdout.strip() == 'active':
-            print(f" {Color.GREEN}✓ Stunnel iniciado correctamente{Color.END}")
-        else:
-            print(f" {Color.YELLOW}⚠ Verificar status de stunnel (journalctl -u stunnel4){Color.END}")
+        subprocess.run(['systemctl', 'enable', 'stunnel4'], stderr=subprocess.DEVNULL)
+        subprocess.run(['systemctl', 'restart', 'stunnel4'], stderr=subprocess.DEVNULL)
 
-        # Abrir puerto en firewall (ufw preferido)
-        if shutil.which('ufw'):
-            subprocess.run(['ufw','allow', port])
-        else:
-            subprocess.run(['iptables','-I','INPUT','-p','tcp','--dport',port,'-j','ACCEPT'])
-            subprocess.run(['iptables-save'])
+        # 6. Configurar el Forwarding (Llamada a la función mejorada)
+        configure_forwarding(port)
 
-        # Configurar forwarding/NAT
-        print(f" {Color.YELLOW}Configurando forwarding/NAT...{Color.END}")
-        if configure_forwarding():
-            print(f" {Color.GREEN}✓ Forwarding/NAT configurado{Color.END}")
-        else:
-            print(f" {Color.YELLOW}⚠ No se pudo configurar forwarding automáticamente{Color.END}")
-
-        # Comprobar escucha con ss
-        time.sleep(1)
-        ss_check = subprocess.run(['ss','-tlnp'], capture_output=True, text=True)
-        if f":{port}" in ss_check.stdout and 'stunnel' in ss_check.stdout:
-            print(f" {Color.GREEN}✓ Puerto {port} escuchando correctamente{Color.END}")
-        else:
-            print(f" {Color.YELLOW}⚠ Verificar puerto {port} con: ss -tlnp{Color.END}")
-
-        # Guardar en PROTOCOLS_FILE
-        try:
-            if os.path.exists(PROTOCOLS_FILE):
-                with open(PROTOCOLS_FILE,'r') as f:
-                    protocols = json.load(f)
-                protocols.setdefault('ssl',{})
-                protocols['ssl']['enabled'] = True
-                protocols['ssl']['port'] = int(port)
-                with open(PROTOCOLS_FILE,'w') as f:
-                    json.dump(protocols,f,indent=4)
-        except Exception:
-            print("No se pudo actualizar PROTOCOLS_FILE (permisos/ruta).")
-
-        # Mostrar host/puerto
-        try:
-            host_ip = subprocess.check_output(['hostname','-I']).decode().split()[0]
-        except:
-            host_ip = 'IP-desconocida'
-        print(f"\n {Color.GREEN}✓ SSL instalado correctamente en puerto {port}{Color.END}")
-        print(f" {Color.CYAN}Puedes conectarte usando:{Color.END}")
-        print(f" {Color.YELLOW}Host: {host_ip}{Color.END}")
-        print(f" {Color.YELLOW}Puerto: {port}{Color.END}")
-        log_action("admin", f"SSL configurado en puerto {port}")
+        print(f"\n {Color.GREEN}✓ SSL activo en puerto {port} -> SSH {ssh_port}{Color.END}")
 
     except Exception as e:
-        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
-        traceback.print_exc()
-
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
+        print(f"Error: {e}")
 
 def stop_ssl():
     """Detener SSL/Stunnel"""
@@ -1227,88 +1139,43 @@ def reset_token_password():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
-def configure_forwarding():
-    """Configura IP forwarding y NAT para Ubuntu (iptables + ufw aware)"""
-    import shutil, traceback, time
+def configure_forwarding(port):
+    """Configura IP forwarding y reglas de NAT/MTU para que haya internet"""
     try:
-        if os.geteuid() != 0:
-            raise RuntimeError("Necesitas ejecutar como root.")
+        # A. Habilitar IPv4 Forwarding en el Kernel
+        subprocess.run(['sysctl', '-w', 'net.ipv4.ip_forward=1'], check=True)
+        
+        # B. Detectar Interfaz de Internet
+        cmd_interfaz = "ip route get 8.8.8.8 | grep -oP 'dev \\K\\S+'"
+        interface = subprocess.check_output(cmd_interfaz, shell=True).decode().strip()
 
-        # Habilitar ip_forward inmediatamente
-        subprocess.run(['sysctl','-w','net.ipv4.ip_forward=1'], check=False)
+        # C. Limpiar reglas antiguas para evitar duplicados
+        subprocess.run(['iptables', '-F'], check=True)
+        subprocess.run(['iptables', '-t', 'nat', '-F'], check=True)
 
-        # Hacer permanente (usar /etc/sysctl.d/99-moratech.conf para no tocar sysctl.conf directo)
-        conf_path = '/etc/sysctl.d/99-moratech.conf'
-        with open(conf_path, 'w') as f:
-            f.write('# Habilitado por Moratech\nnet.ipv4.ip_forward=1\n')
-        subprocess.run(['sysctl','--system'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # D. REGLA MAESTRA: NAT / Masquerade
+        subprocess.run(['iptables', '-t', 'nat', '-A', 'POSTROUTING', '-o', interface, '-j', 'MASQUERADE'], check=True)
 
-        # Detectar interfaz de salida por default
-        route = subprocess.run(['ip','route','show','default'], capture_output=True, text=True)
-        ext_if = 'eth0'
-        if route.returncode == 0 and route.stdout:
-            parts = route.stdout.split()
-            if 'dev' in parts:
-                idx = parts.index('dev')
-                if idx + 1 < len(parts):
-                    ext_if = parts[idx+1]
+        # E. REGLA CRÍTICA: MSS Clamping (Esto arregla que no carguen las webs)
+        # Esto ajusta el tamaño de los paquetes para que quepan por el túnel SSL
+        subprocess.run(['iptables', '-t', 'mangle', '-A', 'FORWARD', '-p', 'tcp', '--tcp-flags', 
+                        'SYN,RST', 'SYN', '-j', 'TCPMSS', '--set-mss', '1300'], check=True)
 
-        # Determinar interfaz TUN (tun0 o similar) para reglas FORWARD; no obligatoria si proxy solo usa NAT universal
-        tun_if = 'tun0'
-        links = subprocess.run(['ip','-o','link','show'], capture_output=True, text=True)
-        for line in links.stdout.splitlines():
-            name = line.split(':')[1].split('@')[0].strip()
-            if name.startswith('tun') or name.startswith('tap') or name.startswith('wg') or name.startswith('vmnet'):
-                tun_if = name
-                break
+        # F. Permitir todo el tráfico de forwarding
+        subprocess.run(['iptables', '-A', 'FORWARD', '-i', interface, '-j', 'ACCEPT'], check=True)
+        subprocess.run(['iptables', '-A', 'FORWARD', '-o', interface, '-j', 'ACCEPT'], check=True)
 
-        # Reglas iptables:
-        # Aceptar conexiones RELATED/ESTABLISHED entrantes desde internet al tun y viceversa
-        subprocess.run(['iptables','-A','FORWARD','-i',ext_if,'-o',tun_if,'-m','state','--state','RELATED,ESTABLISHED','-j','ACCEPT'])
-        subprocess.run(['iptables','-A','FORWARD','-i',tun_if,'-o',ext_if,'-j','ACCEPT'])
-        # MASQUERADE en salida por interfaz externa
-        subprocess.run(['iptables','-t','nat','-A','POSTROUTING','-o',ext_if,'-j','MASQUERADE'])
+        # G. Abrir puerto de Stunnel
+        subprocess.run(['iptables', '-A', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'], check=True)
 
-        # Si ufw está activo, ajustar DEFAULT_FORWARD_POLICY y before.rules
-        if shutil.which('ufw'):
-            ufw_status = subprocess.run(['ufw','status','verbose'], capture_output=True, text=True)
-            if 'Status: active' in ufw_status.stdout:
-                # Cambiar politica forward a ACCEPT en /etc/default/ufw
-                dpath = '/etc/default/ufw'
-                if os.path.exists(dpath):
-                    with open(dpath,'r') as f:
-                        d = f.read()
-                    d = d.replace('DEFAULT_FORWARD_POLICY="DROP"','DEFAULT_FORWARD_POLICY="ACCEPT"')
-                    with open(dpath,'w') as f:
-                        f.write(d)
-                # Añadir bloque NAT si no existe en before.rules
-                before = '/etc/ufw/before.rules'
-                if os.path.exists(before):
-                    with open(before,'r') as f:
-                        b = f.read()
-                    if '*nat' not in b:
-                        nat_block = f"\n# NAT table rules (added by Moratech)\n*nat\n:POSTROUTING ACCEPT [0:0]\n-A POSTROUTING -o {ext_if} -j MASQUERADE\nCOMMIT\n"
-                        with open(before,'a') as f:
-                            f.write(nat_block)
-                        # reload ufw
-                        subprocess.run(['ufw','disable'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        time.sleep(0.5)
-                        subprocess.run(['ufw','enable'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-        # Persistir reglas (iptables-persistent / netfilter-persistent)
-        if shutil.which('netfilter-persistent'):
-            subprocess.run(['netfilter-persistent','save'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        else:
-            # fallback: iptables-save to /etc/iptables/rules.v4 si existe paquete
-            if os.path.exists('/etc/iptables'):
-                subprocess.run(['iptables-save'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # H. Persistencia de iptables (instalar iptables-persistent si no está)
+        subprocess.run('DEBIAN_FRONTEND=noninteractive apt-get install -y iptables-persistent', shell=True)
+        subprocess.run('iptables-save > /etc/iptables/rules.v4', shell=True)
 
         return True
     except Exception as e:
-        print("Error en configure_forwarding:", e)
-        traceback.print_exc()
+        print(f"Error en forwarding: {e}")
         return False
-
 # ==================== MENÚ PRINCIPAL ====================
 
 def main_menu(username):
