@@ -658,14 +658,12 @@ def install_ssl():
         subprocess.run(['apt-get', 'install', 'stunnel', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         # Obtener puerto SSH
-        result = subprocess.run(['netstat', '-nplt'], capture_output=True, text=True)
+        result = subprocess.run(['ss', '-tlnp'], capture_output=True, text=True)
         ssh_port = '22'
         for line in result.stdout.split('\n'):
-            if 'sshd' in line:
-                parts = line.split(':')
-                if len(parts) > 1:
-                    ssh_port = parts[1].split()[0]
-                    break
+            if 'sshd' in line and ':22' in line:
+                ssh_port = '22'
+                break
         
         print(f" {Color.YELLOW}Puerto SSH detectado: {ssh_port}{Color.END}")
         
@@ -686,35 +684,58 @@ accept = {port}
         
         # Generar certificados
         print(f" {Color.YELLOW}Generando certificados...{Color.END}")
-        subprocess.run(['openssl', 'genrsa', '-out', 'key.pem', '2048'], 
+        subprocess.run(['openssl', 'genrsa', '-out', '/tmp/key.pem', '2048'], 
                       stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
-        cert_data = "br\nbr\nuss\nspeed\npnl\nmoratech\n@moratech.com\n"
-        proc = subprocess.Popen(['openssl', 'req', '-new', '-x509', '-key', 'key.pem', 
-                                '-out', 'cert.pem', '-days', '1095'],
+        cert_data = "BR\nBR\nUSS\nSPEED\nPNL\nmoratech\ninfo@moratech.com\n\n\n"
+        proc = subprocess.Popen(['openssl', 'req', '-new', '-x509', '-key', '/tmp/key.pem', 
+                                '-out', '/tmp/cert.pem', '-days', '1095'],
                                stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, 
                                stderr=subprocess.DEVNULL)
         proc.communicate(input=cert_data.encode())
         
         # Combinar certificados
-        with open('key.pem', 'r') as f1, open('cert.pem', 'r') as f2:
+        with open('/tmp/key.pem', 'r') as f1, open('/tmp/cert.pem', 'r') as f2:
             combined = f1.read() + f2.read()
         
         with open('/etc/stunnel/stunnel.pem', 'w') as f:
             f.write(combined)
+        
+        # IMPORTANTE: Corregir permisos del certificado
+        subprocess.run(['chmod', '600', '/etc/stunnel/stunnel.pem'])
+        subprocess.run(['chown', 'root:root', '/etc/stunnel/stunnel.pem'])
         
         # Habilitar stunnel
         subprocess.run(['sed', '-i', 's/ENABLED=0/ENABLED=1/g', '/etc/default/stunnel4'])
         
         # Reiniciar servicios
         print(f" {Color.YELLOW}Iniciando servicios...{Color.END}")
-        subprocess.run(['service', 'stunnel4', 'restart'], stderr=subprocess.DEVNULL)
-        subprocess.run(['service', 'stunnel', 'restart'], stderr=subprocess.DEVNULL)
+        subprocess.run(['service', 'stunnel4', 'stop'], stderr=subprocess.DEVNULL)
+        import time
+        time.sleep(1)
         subprocess.run(['service', 'stunnel4', 'start'], stderr=subprocess.DEVNULL)
+        time.sleep(1)
+        subprocess.run(['service', 'stunnel4', 'restart'], stderr=subprocess.DEVNULL)
+        
+        # Verificar que inició
+        result = subprocess.run(['service', 'stunnel4', 'status'], capture_output=True, text=True)
+        if 'active (running)' in result.stdout:
+            print(f" {Color.GREEN}✓ Stunnel iniciado correctamente{Color.END}")
+        else:
+            print(f" {Color.YELLOW}⚠ Verificar status de stunnel{Color.END}")
         
         # Abrir puerto con UFW e iptables
         subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
         subprocess.run(['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'])
+        subprocess.run(['iptables-save'], stderr=subprocess.DEVNULL)
+        
+        # Verificar que el puerto está escuchando
+        time.sleep(1)
+        result = subprocess.run(['netstat', '-tlnp'], capture_output=True, text=True)
+        if f':{port}' in result.stdout and 'stunnel' in result.stdout:
+            print(f" {Color.GREEN}✓ Puerto {port} escuchando correctamente{Color.END}")
+        else:
+            print(f" {Color.YELLOW}⚠ Verificar puerto {port}{Color.END}")
         
         # Guardar en config
         with open(PROTOCOLS_FILE, 'r') as f:
@@ -727,16 +748,21 @@ accept = {port}
             json.dump(protocols, f, indent=4)
         
         # Limpiar archivos temporales
-        subprocess.run(['rm', '-f', 'key.pem', 'cert.pem'], stderr=subprocess.DEVNULL)
+        subprocess.run(['rm', '-f', '/tmp/key.pem', '/tmp/cert.pem'], stderr=subprocess.DEVNULL)
         
         print(f"\n {Color.GREEN}✓ SSL instalado correctamente en puerto {port}{Color.END}")
+        print(f" {Color.CYAN}Puedes conectarte usando:{Color.END}")
+        print(f" {Color.YELLOW}Host: {subprocess.check_output(['hostname', '-I']).decode().split()[0]}{Color.END}")
+        print(f" {Color.YELLOW}Puerto: {port}{Color.END}")
         log_action("admin", f"SSL configurado en puerto {port}")
         
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        import traceback
+        traceback.print_exc()
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
+    
 def install_proxy():
     """Instalar Proxy Python"""
     clear_screen()
@@ -749,32 +775,60 @@ def install_proxy():
     if not port:
         port = "80"
     
+    # Verificar si el puerto está en uso
+    try:
+        result = subprocess.run(['lsof', '-ti', f':{port}'], capture_output=True, text=True)
+        pids = result.stdout.strip()
+        
+        if pids:
+            result_process = subprocess.run(['lsof', '-i', f':{port}'], capture_output=True, text=True)
+            print(f"\n {Color.RED}⚠ Puerto {port} está en uso:{Color.END}")
+            print(result_process.stdout)
+            
+            confirm = input(f"\n {Color.YELLOW}¿Liberar el puerto {port}? (s/n): {Color.END}").strip().lower()
+            if confirm == 's':
+                for pid in pids.split('\n'):
+                    if pid:
+                        subprocess.run(['kill', '-9', pid], stderr=subprocess.DEVNULL)
+                print(f" {Color.GREEN}✓ Puerto liberado{Color.END}")
+                import time
+                time.sleep(2)
+            else:
+                print(f" {Color.RED}Instalación cancelada{Color.END}")
+                input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+                return
+    except:
+        pass
+    
     print(f"\n {Color.YELLOW}Instalando Proxy Python en puerto {port}...{Color.END}")
     
     try:
-        # Detener proceso anterior
+        # Detener procesos anteriores
         subprocess.run(['pkill', '-f', 'pythonwe'], stderr=subprocess.DEVNULL)
-        subprocess.run(['pkill', 'python'], stderr=subprocess.DEVNULL)
+        subprocess.run(['pkill', '-f', 'proxy.py'], stderr=subprocess.DEVNULL)
         
         # Instalar dependencias
         print(f" {Color.YELLOW}Instalando dependencias...{Color.END}")
+        subprocess.run(['apt-get', 'update'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'python2', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(['apt-get', 'install', 'python', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         subprocess.run(['apt-get', 'install', 'screen', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'lsof', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         # Obtener puerto SSH
-        result = subprocess.run(['netstat', '-nplt'], capture_output=True, text=True)
+        result = subprocess.run(['ss', '-tlnp'], capture_output=True, text=True)
         ssh_port = '22'
         for line in result.stdout.split('\n'):
-            if 'sshd' in line:
-                parts = line.split(':')
-                if len(parts) > 1:
-                    ssh_port = parts[1].split()[0]
-                    break
+            if 'sshd' in line and ':22' in line:
+                ssh_port = '22'
+                break
         
-        print(f" {Color.YELLOW}Puerto SSH detectado: {ssh_port}{Color.END}")
+        print(f" {Color.YELLOW}Puerto SSH: {ssh_port}{Color.END}")
         
-        # Script Python completo (el del documento)
-        proxy_script = f"""import socket, threading, thread, select, signal, sys, time, getopt
+        # Script Python (compatible con Python 2)
+        proxy_script = f"""#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+import socket, threading, select, sys, time
 
 LISTENING_ADDR = '0.0.0.0'
 LISTENING_PORT = {port}
@@ -782,7 +836,7 @@ PASS = ''
 BUFLEN = 4096 * 4
 TIMEOUT = 60
 DEFAULT_HOST = "127.0.0.1:{ssh_port}"
-RESPONSE = 'HTTP/1.1 101 Switching Protocols! \\r\\n\\r\\n'
+RESPONSE = 'HTTP/1.1 101 Switching Protocols!\\r\\n\\r\\n'
 
 class Server(threading.Thread):
     def __init__(self, host, port):
@@ -811,7 +865,7 @@ class Server(threading.Thread):
                     continue
                 
                 conn = ConnectionHandler(c, self, addr)
-                conn.start();
+                conn.start()
                 self.addConn(conn)
         finally:
             self.running = False
@@ -819,7 +873,7 @@ class Server(threading.Thread):
             
     def printLog(self, log):
         self.logLock.acquire()
-        print log
+        print(log)
         self.logLock.release()
     
     def addConn(self, conn):
@@ -903,31 +957,25 @@ class ConnectionHandler(threading.Thread):
                 else:
                     self.client.send('HTTP/1.1 403 Forbidden!\\r\\n\\r\\n')
             else:
-                print '- No X-Real-Host!'
                 self.client.send('HTTP/1.1 400 NoXRealHost!\\r\\n\\r\\n')
 
         except Exception as e:
-            self.log += ' - error: ' + e.strerror
+            self.log += ' - error: ' + str(e)
             self.server.printLog(self.log)
-            pass
         finally:
             self.close()
             self.server.removeConn(self)
 
     def findHeader(self, head, header):
         aux = head.find(header + ': ')
-    
         if aux == -1:
             return ''
-
         aux = head.find(':', aux)
         head = head[aux+2:]
         aux = head.find('\\r\\n')
-
         if aux == -1:
             return ''
-
-        return head[:aux];
+        return head[:aux]
 
     def connect_target(self, host):
         i = host.find(':')
@@ -935,24 +983,18 @@ class ConnectionHandler(threading.Thread):
             port = int(host[i+1:])
             host = host[:i]
         else:
-            if self.method=='CONNECT':
-                port = 443
-            else:
-                port = 80
+            port = 80
 
         (soc_family, soc_type, proto, _, address) = socket.getaddrinfo(host, port)[0]
-
         self.target = socket.socket(soc_family, soc_type, proto)
         self.targetClosed = False
         self.target.connect(address)
 
     def method_CONNECT(self, path):
         self.log += ' - CONNECT ' + path
-        
         self.connect_target(path)
         self.client.sendall(RESPONSE)
         self.client_buffer = ''
-
         self.server.printLog(self.log)
         self.doCONNECT()
 
@@ -976,7 +1018,6 @@ class ConnectionHandler(threading.Thread):
                                 while data:
                                     byte = self.target.send(data)
                                     data = data[byte:]
-
                             count = 0
                         else:
                             break
@@ -985,16 +1026,16 @@ class ConnectionHandler(threading.Thread):
                         break
             if count == TIMEOUT:
                 error = True
-
             if error:
                 break
 
-def main(host=LISTENING_ADDR, port=LISTENING_PORT):
-    print "\\n =============================="
-    print "\\n         PYTHON PROXY"
-    print "\\n =============================="
-    print "IP: " + LISTENING_ADDR
-    print "Puerto: " + str(LISTENING_PORT)
+def main():
+    print("\\n==============================")
+    print("      PYTHON PROXY")
+    print("==============================")
+    print("IP: " + LISTENING_ADDR)
+    print("Puerto: " + str(LISTENING_PORT))
+    print("Iniciado correctamente\\n")
     
     server = Server(LISTENING_ADDR, LISTENING_PORT)
     server.start()
@@ -1003,7 +1044,7 @@ def main(host=LISTENING_ADDR, port=LISTENING_PORT):
         try:
             time.sleep(2)
         except KeyboardInterrupt:
-            print 'Stopping...'
+            print('Deteniendo...')
             server.close()
             break
 
@@ -1015,18 +1056,26 @@ if __name__ == '__main__':
         with open('/root/proxy.py', 'w') as f:
             f.write(proxy_script)
         
+        subprocess.run(['chmod', '+x', '/root/proxy.py'])
+        
         # Iniciar proxy en screen
-        print(f" {Color.YELLOW}Iniciando proxy...{Color.END}")
-        subprocess.run(['screen', '-dmS', 'pythonwe', 'python', '/root/proxy.py'])
+        print(f" {Color.YELLOW}Iniciando proxy en segundo plano...{Color.END}")
+        subprocess.run(['screen', '-wipe'], stderr=subprocess.DEVNULL)
+        subprocess.run(['screen', '-dmS', 'pythonwe', 'python2', '/root/proxy.py'])
+        
+        import time
+        time.sleep(2)
+        
+        # Verificar si inició
+        result = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+        if 'pythonwe' in result.stdout:
+            print(f" {Color.GREEN}✓ Proxy iniciado en screen{Color.END}")
+        else:
+            print(f" {Color.RED}⚠ Proxy pudo no iniciar correctamente{Color.END}")
         
         # Abrir puerto
         subprocess.run(['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'])
         subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
-        
-        # Agregar a autostart
-        autostart_cmd = f"ps x | grep 'pythonwe' | grep -v 'grep' || screen -dmS pythonwe python /root/proxy.py\n"
-        with open('/etc/autostart', 'a') as f:
-            f.write(autostart_cmd)
         
         # Guardar en config
         with open(PROTOCOLS_FILE, 'r') as f:
@@ -1039,12 +1088,33 @@ if __name__ == '__main__':
             json.dump(protocols, f, indent=4)
         
         print(f"\n {Color.GREEN}✓ Proxy Python instalado en puerto {port}{Color.END}")
+        print(f" {Color.YELLOW}Para ver logs: screen -r pythonwe{Color.END}")
         log_action("admin", f"Proxy Python configurado en puerto {port}")
         
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        import traceback
+        traceback.print_exc()
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+# ==================== EXTRAS ====================
+
+def check_and_free_port(port):
+    """Verifica y libera un puerto"""
+    try:
+        # Ver qué proceso usa el puerto
+        result = subprocess.run(['lsof', '-ti', f':{port}'], capture_output=True, text=True)
+        pids = result.stdout.strip().split('\n')
+        
+        if pids and pids[0]:
+            print(f" {Color.YELLOW}Puerto {port} en uso. Liberando...{Color.END}")
+            for pid in pids:
+                if pid:
+                    subprocess.run(['kill', '-9', pid], stderr=subprocess.DEVNULL)
+            import time
+            time.sleep(1)
+    except:
+        pass
 # ==================== MENÚ PRINCIPAL ====================
 
 def main_menu(username):
