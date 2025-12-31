@@ -393,7 +393,7 @@ def add_token_user():
     
     # Token
     token_input = input(f"{Color.GREEN}Ingresa el token: {Color.END}").strip()
-    token_username = "token_" + hashlib.sha256(token_input.encode()).hexdigest()[:8]
+    token_username = token_input  # Usa el token directamente como username
     
     if token_username in users:
         print(f"{Color.RED}✗ Este token ya fue usado{Color.END}")
@@ -762,7 +762,7 @@ accept = {port}
         traceback.print_exc()
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-    
+
 def install_proxy():
     """Instalar Proxy Python"""
     clear_screen()
