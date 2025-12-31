@@ -959,194 +959,337 @@ def menu_phyton():
             print(f"\n{Color.YELLOW}Función en desarrollo...{Color.END}")
             input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
-
 def install_proxy():
-    """Instalar Proxy Python (Python 3) - proxy TCP CONNECT simple"""
-    import shutil, time, traceback
+    """Instalar Proxy Python (Python 2) - versión que funciona"""
     clear_screen()
     print_banner()
     print_line()
     print(f" {Color.CYAN}INSTALANDO PROXY PYTHON{Color.END}")
     print_line()
 
-    port = input(f"\n {Color.GREEN}Puerto para Proxy (default 80): {Color.END}").strip() or "80"
+    port = input(f"\n {Color.GREEN}Puerto para Proxy (default 80): {Color.END}").strip()
+    if not port:
+        port = "80"
 
     # Verificar y liberar puerto si está ocupado
     try:
-        result = subprocess.run(['lsof','-ti',f':{port}'], capture_output=True, text=True)
+        result = subprocess.run(['lsof', '-ti', f':{port}'], capture_output=True, text=True)
         pids = result.stdout.strip()
         if pids:
             print(f"\n {Color.RED}⚠ Puerto {port} está en uso:{Color.END}")
-            result_process = subprocess.run(['lsof','-i', f':{port}'], capture_output=True, text=True)
+            result_process = subprocess.run(['lsof', '-i', f':{port}'], capture_output=True, text=True)
             print(result_process.stdout)
             confirm = input(f"\n {Color.YELLOW}¿Liberar el puerto {port}? (s/n): {Color.END}").strip().lower()
             if confirm == 's':
                 for pid in pids.split('\n'):
                     if pid:
-                        subprocess.run(['kill','-9',pid], stderr=subprocess.DEVNULL)
-                time.sleep(1)
+                        subprocess.run(['kill', '-9', pid], stderr=subprocess.DEVNULL)
+                import time
+                time.sleep(2)
             else:
                 print(f" {Color.RED}Instalación cancelada{Color.END}")
                 input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
                 return
-    except Exception:
-        # si lsof no está o falla, seguimos igualmente
+    except:
         pass
 
     print(f"\n {Color.YELLOW}Instalando Proxy Python en puerto {port}...{Color.END}")
 
     try:
-        # revisar root y binaries
-        if os.geteuid() != 0:
-            raise RuntimeError("Debes ejecutar como root.")
-        if not shutil.which('python3'):
-            subprocess.run(['apt-get','update'])
-            subprocess.run(['apt-get','install','-y','python3','python3-venv','screen','lsof'], stdout=subprocess.DEVNULL)
+        # Detener procesos previos
+        subprocess.run(['pkill', '-f', 'pythonwe'], stderr=subprocess.DEVNULL)
+        subprocess.run(['pkill', '-f', 'proxy.py'], stderr=subprocess.DEVNULL)
 
-        # detener procesos previos
-        subprocess.run(['pkill','-f','pythonwe'], stderr=subprocess.DEVNULL)
-        subprocess.run(['pkill','-f','proxy.py'], stderr=subprocess.DEVNULL)
+        # Instalar dependencias
+        print(f" {Color.YELLOW}Instalando dependencias...{Color.END}")
+        subprocess.run(['apt-get', 'update'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'python2', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'python', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'screen', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'lsof', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        # detectar puerto ssh
-        ss_out = subprocess.run(['ss','-tlnp'], capture_output=True, text=True)
+        # Detectar puerto SSH
         ssh_port = '22'
-        for line in ss_out.stdout.splitlines():
-            if 'sshd' in line and ':22' in line:
-                ssh_port = '22'
-                break
         print(f" {Color.YELLOW}Puerto SSH: {ssh_port}{Color.END}")
 
-        # Script proxy en Python3 (TCP tunnel que responde a CONNECT)
-        proxy_script = (
-            "#!/usr/bin/env python3\n"
-            "import socket, threading, selectors, sys, time\n"
-            "LISTEN_ADDR = '0.0.0.0'\n"
-            "LISTEN_PORT = {port}\n"
-            "DEFAULT_HOST = '127.0.0.1:{ssh_port}'\n"
-            "BUFLEN = 65536\n\n"
-            "sel = selectors.DefaultSelector()\n\n"
-            "def start_server():\n"
-            "    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n"
-            "    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)\n"
-            "    s.bind((LISTEN_ADDR, LISTEN_PORT))\n"
-            "    s.listen(512)\n"
-            "    s.setblocking(False)\n"
-            "    sel.register(s, selectors.EVENT_READ, accept)\n"
-            "    print('PYTHON PROXY - escuchando', LISTEN_ADDR, LISTEN_PORT)\n\n"
-            "def accept(sock):\n"
-            "    conn, addr = sock.accept()\n"
-            "    conn.setblocking(False)\n"
-            "    sel.register(conn, selectors.EVENT_READ, client_read)\n\n"
-            "def client_read(conn):\n"
-            "    try:\n"
-            "        data = conn.recv(BUFLEN)\n"
-            "        if not data:\n"
-            "            cleanup(conn)\n"
-            "            return\n"
-            "        headers = data.split(b'\\r\\n')\n"
-            "        host = None\n"
-            "        for h in headers[:10]:\n"
-            "            if h.lower().startswith(b'x-real-host:'):\n"
-            "                host = h.split(b':',1)[1].strip().decode()\n"
-            "                break\n"
-            "        if not host:\n"
-            "            host = DEFAULT_HOST\n"
-            "        target_host, target_port = host.split(':')\n"
-            "        target_port = int(target_port)\n"
-            "        t = socket.create_connection((target_host, target_port), timeout=10)\n"
-            "        try:\n"
-            "            conn.sendall(b'HTTP/1.1 200 Connection established\\r\\n\\r\\n')\n"
-            "        except:\n"
-            "            pass\n"
-            "        threading.Thread(target=pipe, args=(conn,t), daemon=True).start()\n"
-            "        threading.Thread(target=pipe, args=(t,conn), daemon=True).start()\n"
-            "        sel.unregister(conn)\n"
-            "    except Exception:\n"
-            "        cleanup(conn)\n\n"
-            "def pipe(src, dst):\n"
-            "    try:\n"
-            "        while True:\n"
-            "            data = src.recv(BUFLEN)\n"
-            "            if not data:\n"
-            "                break\n"
-            "            dst.sendall(data)\n"
-            "    except:\n"
-            "        pass\n"
-            "    finally:\n"
-            "        try:\n"
-            "            src.shutdown(socket.SHUT_RDWR)\n"
-            "        except:\n"
-            "            pass\n"
-            "        try:\n"
-            "            dst.shutdown(socket.SHUT_RDWR)\n"
-            "        except:\n"
-            "            pass\n"
-            "        try:\n"
-            "            src.close()\n"
-            "        except:\n"
-            "            pass\n"
-            "        try:\n"
-            "            dst.close()\n"
-            "        except:\n"
-            "            pass\n\n"
-            "def cleanup(conn):\n"
-            "    try:\n"
-            "        sel.unregister(conn)\n"
-            "    except:\n"
-            "        pass\n"
-            "    try:\n"
-            "        conn.close()\n"
-            "    except:\n"
-            "        pass\n\n"
-            "def main():\n"
-            "    start_server()\n"
-            "    try:\n"
-            "        while True:\n"
-            "            events = sel.select(timeout=1)\n"
-            "            for key, mask in events:\n"
-            "                callback = key.data\n"
-            "                callback(key.fileobj)\n"
-            "    except KeyboardInterrupt:\n"
-            "        pass\n\n"
-            "if __name__ == '__main__':\n"
-            "    main()\n"
-        ).format(port=port, ssh_port=ssh_port)
+        # Script Python 2 ORIGINAL que funciona
+        proxy_script = f"""#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+import socket, threading, thread, select, signal, sys, time, getopt
 
-        # Guardar script en /root/proxy.py
+# CONFIG
+LISTENING_ADDR = '0.0.0.0'
+LISTENING_PORT = {port}
+PASS = ''
+
+# CONST
+BUFLEN = 4096 * 4
+TIMEOUT = 60
+DEFAULT_HOST = "127.0.0.1:{ssh_port}"
+RESPONSE = 'HTTP/1.1 101 Switching Protocols! \\r\\n\\r\\n'
+ 
+class Server(threading.Thread):
+    def __init__(self, host, port):
+        threading.Thread.__init__(self)
+        self.running = False
+        self.host = host
+        self.port = port
+        self.threads = []
+        self.threadsLock = threading.Lock()
+        self.logLock = threading.Lock()
+
+    def run(self):
+        self.soc = socket.socket(socket.AF_INET)
+        self.soc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.soc.settimeout(2)
+        self.soc.bind((self.host, self.port))
+        self.soc.listen(0)
+        self.running = True
+
+        try:                    
+            while self.running:
+                try:
+                    c, addr = self.soc.accept()
+                    c.setblocking(1)
+                except socket.timeout:
+                    continue
+                
+                conn = ConnectionHandler(c, self, addr)
+                conn.start();
+                self.addConn(conn)
+        finally:
+            self.running = False
+            self.soc.close()
+            
+    def printLog(self, log):
+        self.logLock.acquire()
+        print log
+        self.logLock.release()
+    
+    def addConn(self, conn):
+        try:
+            self.threadsLock.acquire()
+            if self.running:
+                self.threads.append(conn)
+        finally:
+            self.threadsLock.release()
+                    
+    def removeConn(self, conn):
+        try:
+            self.threadsLock.acquire()
+            self.threads.remove(conn)
+        finally:
+            self.threadsLock.release()
+                
+    def close(self):
+        try:
+            self.running = False
+            self.threadsLock.acquire()
+            
+            threads = list(self.threads)
+            for c in threads:
+                c.close()
+        finally:
+            self.threadsLock.release()
+            
+
+class ConnectionHandler(threading.Thread):
+    def __init__(self, socClient, server, addr):
+        threading.Thread.__init__(self)
+        self.clientClosed = False
+        self.targetClosed = True
+        self.client = socClient
+        self.client_buffer = ''
+        self.server = server
+        self.log = 'Connection: ' + str(addr)
+
+    def close(self):
+        try:
+            if not self.clientClosed:
+                self.client.shutdown(socket.SHUT_RDWR)
+                self.client.close()
+        except:
+            pass
+        finally:
+            self.clientClosed = True
+            
+        try:
+            if not self.targetClosed:
+                self.target.shutdown(socket.SHUT_RDWR)
+                self.target.close()
+        except:
+            pass
+        finally:
+            self.targetClosed = True
+
+    def run(self):
+        try:
+            self.client_buffer = self.client.recv(BUFLEN)
+        
+            hostPort = self.findHeader(self.client_buffer, 'X-Real-Host')
+            
+            if hostPort == '':
+                hostPort = DEFAULT_HOST
+
+            split = self.findHeader(self.client_buffer, 'X-Split')
+
+            if split != '':
+                self.client.recv(BUFLEN)
+            
+            if hostPort != '':
+                passwd = self.findHeader(self.client_buffer, 'X-Pass')
+                
+                if len(PASS) != 0 and passwd == PASS:
+                    self.method_CONNECT(hostPort)
+                elif len(PASS) != 0 and passwd != PASS:
+                    self.client.send('HTTP/1.1 400 WrongPass!\\r\\n\\r\\n')
+                elif hostPort.startswith('127.0.0.1') or hostPort.startswith('localhost'):
+                    self.method_CONNECT(hostPort)
+                else:
+                    self.client.send('HTTP/1.1 403 Forbidden!\\r\\n\\r\\n')
+            else:
+                self.client.send('HTTP/1.1 400 NoXRealHost!\\r\\n\\r\\n')
+
+        except Exception as e:
+            self.log += ' - error: ' + str(e)
+            self.server.printLog(self.log)
+        finally:
+            self.close()
+            self.server.removeConn(self)
+
+    def findHeader(self, head, header):
+        aux = head.find(header + ': ')
+    
+        if aux == -1:
+            return ''
+
+        aux = head.find(':', aux)
+        head = head[aux+2:]
+        aux = head.find('\\r\\n')
+
+        if aux == -1:
+            return ''
+
+        return head[:aux];
+
+    def connect_target(self, host):
+        i = host.find(':')
+        if i != -1:
+            port = int(host[i+1:])
+            host = host[:i]
+        else:
+            port = 80
+
+        (soc_family, soc_type, proto, _, address) = socket.getaddrinfo(host, port)[0]
+        self.target = socket.socket(soc_family, soc_type, proto)
+        self.targetClosed = False
+        self.target.connect(address)
+
+    def method_CONNECT(self, path):
+        self.log += ' - CONNECT ' + path
+        
+        self.connect_target(path)
+        self.client.sendall(RESPONSE)
+        self.client_buffer = ''
+
+        self.server.printLog(self.log)
+        self.doCONNECT()
+
+    def doCONNECT(self):
+        socs = [self.client, self.target]
+        count = 0
+        error = False
+        while True:
+            count += 1
+            (recv, _, err) = select.select(socs, [], socs, 3)
+            if err:
+                error = True
+            if recv:
+                for in_ in recv:
+                    try:
+                        data = in_.recv(BUFLEN)
+                        if data:
+                            if in_ is self.target:
+                                self.client.send(data)
+                            else:
+                                while data:
+                                    byte = self.target.send(data)
+                                    data = data[byte:]
+                            count = 0
+                        else:
+                            break
+                    except:
+                        error = True
+                        break
+            if count == TIMEOUT:
+                error = True
+
+            if error:
+                break
+
+
+def main():
+    print "\\n=============================="
+    print "      PYTHON PROXY"
+    print "=============================="
+    print "IP: " + LISTENING_ADDR
+    print "Puerto: " + str(LISTENING_PORT)
+    print "Iniciado correctamente\\n"
+    
+    server = Server(LISTENING_ADDR, LISTENING_PORT)
+    server.start()
+
+    while True:
+        try:
+            time.sleep(2)
+        except KeyboardInterrupt:
+            print 'Deteniendo...'
+            server.close()
+            break
+
+if __name__ == '__main__':
+    main()
+"""
+
+        # Guardar script
         with open('/root/proxy.py', 'w') as f:
             f.write(proxy_script)
-        subprocess.run(['chmod','+x','/root/proxy.py'])
+        
+        subprocess.run(['chmod', '+x', '/root/proxy.py'])
 
-        # Iniciar en screen
-        subprocess.run(['screen','-dmS','pythonwe','python3','/root/proxy.py'])
-        time.sleep(1)
+        # Iniciar proxy en screen con Python 2
+        print(f" {Color.YELLOW}Iniciando proxy en segundo plano...{Color.END}")
+        subprocess.run(['screen', '-wipe'], stderr=subprocess.DEVNULL)
+        subprocess.run(['screen', '-dmS', 'pythonwe', 'python2', '/root/proxy.py'])
 
-        # Comprobar screen
-        result = subprocess.run(['screen','-ls'], capture_output=True, text=True)
+        import time
+        time.sleep(2)
+
+        # Verificar si inició
+        result = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
         if 'pythonwe' in result.stdout:
             print(f" {Color.GREEN}✓ Proxy iniciado en screen{Color.END}")
         else:
             print(f" {Color.RED}⚠ Proxy pudo no iniciar correctamente{Color.END}")
 
-        # Abrir puerto en firewall y configurar NAT/forward
-        subprocess.run(['iptables','-I','INPUT','-p','tcp','--dport',port,'-j','ACCEPT'])
-        if shutil.which('ufw'):
-            subprocess.run(['ufw','allow', port])
-        if configure_forwarding():
-            print(f" {Color.GREEN}✓ Forwarding configurado{Color.END}")
+        # Abrir puerto
+        subprocess.run(['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'])
+        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
 
-        # Actualizar PROTOCOLS_FILE
-        try:
-            if os.path.exists(PROTOCOLS_FILE):
-                with open(PROTOCOLS_FILE,'r') as f:
-                    protocols = json.load(f)
-                protocols.setdefault('proxy',{})
-                protocols['proxy']['enabled'] = True
-                protocols['proxy']['port'] = int(port)
-                with open(PROTOCOLS_FILE,'w') as f:
-                    json.dump(protocols,f,indent=4)
-        except:
-            pass
+        # Configurar forwarding
+        print(f" {Color.YELLOW}Configurando forwarding...{Color.END}")
+        configure_forwarding()
+        print(f" {Color.GREEN}✓ Forwarding configurado{Color.END}")
+
+        # Guardar en config
+        with open(PROTOCOLS_FILE, 'r') as f:
+            protocols = json.load(f)
+
+        protocols['proxy']['enabled'] = True
+        protocols['proxy']['port'] = int(port)
+
+        with open(PROTOCOLS_FILE, 'w') as f:
+            json.dump(protocols, f, indent=4)
 
         print(f"\n {Color.GREEN}✓ Proxy Python instalado en puerto {port}{Color.END}")
         print(f" {Color.YELLOW}Para ver logs: screen -r pythonwe{Color.END}")
@@ -1154,11 +1297,11 @@ def install_proxy():
 
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        import traceback
         traceback.print_exc()
 
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
-
+    
 def stop_proxy():
     """Detener Proxy Python"""
     clear_screen()
