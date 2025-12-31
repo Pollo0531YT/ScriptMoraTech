@@ -784,6 +784,9 @@ protocol = connect
         subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
         subprocess.run(['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'])
         subprocess.run(['iptables-save'], stderr=subprocess.DEVNULL)
+        print(f" {Color.YELLOW}Configurando forwarding...{Color.END}")
+        if configure_forwarding():
+            print(f" {Color.GREEN}✓ Forwarding configurado{Color.END}")
         
         # Verificar que el puerto está escuchando
         time.sleep(1)
@@ -1132,6 +1135,9 @@ if __name__ == '__main__':
         # Abrir puerto
         subprocess.run(['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'])
         subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        print(f" {Color.YELLOW}Configurando forwarding...{Color.END}")
+        if configure_forwarding():
+            print(f" {Color.GREEN}✓ Forwarding configurado{Color.END}")
         
         # Guardar en config
         with open(PROTOCOLS_FILE, 'r') as f:
@@ -1199,6 +1205,44 @@ def reset_token_password():
     log_action("admin", "Contraseña de tokens reseteada")
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+def configure_forwarding():
+    """Configura IP forwarding y NAT para VPN"""
+    try:
+        # Habilitar IP forwarding
+        subprocess.run(['sysctl', '-w', 'net.ipv4.ip_forward=1'], stderr=subprocess.DEVNULL)
+        
+        # Hacer permanente
+        with open('/etc/sysctl.conf', 'r') as f:
+            content = f.read()
+        
+        if 'net.ipv4.ip_forward=1' not in content:
+            with open('/etc/sysctl.conf', 'a') as f:
+                f.write('\nnet.ipv4.ip_forward=1\n')
+        
+        # Obtener interfaz de red principal
+        result = subprocess.run(['ip', 'route', 'show', 'default'], capture_output=True, text=True)
+        interface = 'eth0'  # default
+        if result.stdout:
+            parts = result.stdout.split()
+            if 'dev' in parts:
+                idx = parts.index('dev')
+                if idx + 1 < len(parts):
+                    interface = parts[idx + 1]
+        
+        # Configurar NAT (MASQUERADE)
+        subprocess.run(['iptables', '-t', 'nat', '-A', 'POSTROUTING', '-o', interface, '-j', 'MASQUERADE'], 
+                      stderr=subprocess.DEVNULL)
+        
+        # Permitir forwarding
+        subprocess.run(['iptables', '-A', 'FORWARD', '-j', 'ACCEPT'], stderr=subprocess.DEVNULL)
+        
+        # Guardar reglas
+        subprocess.run(['iptables-save'], stderr=subprocess.DEVNULL)
+        
+        return True
+    except:
+        return False
 # ==================== MENÚ PRINCIPAL ====================
 
 def main_menu(username):
