@@ -226,9 +226,43 @@ def load_users():
         return json.load(f)
 
 def save_users(users):
-    """Guarda usuarios"""
+    """Guarda usuarios y sincroniza con el sistema Linux"""
+    # Guardar en JSON
     with open(USERS_FILE, 'w') as f:
         json.dump(users, f, indent=4)
+    
+    # Sincronizar con usuarios del sistema
+    try:
+        # Obtener usuarios actuales del sistema
+        result = subprocess.run(['cut', '-d:', '-f1', '/etc/passwd'], capture_output=True, text=True)
+        system_users = result.stdout.strip().split('\n')
+        
+        # Crear/actualizar usuarios que están en JSON
+        for username, data in users.items():
+            if username == 'admin':
+                continue  # No crear admin como usuario SSH
+            
+            # Si el usuario no existe en el sistema, crearlo
+            if username not in system_users:
+                subprocess.run(['useradd', '-M', '-s', '/bin/false', username], 
+                             stderr=subprocess.DEVNULL)
+            
+            # Actualizar contraseña
+            password = data.get('password', '')
+            subprocess.run(['chpasswd'], 
+                         input=f"{username}:{password}\n".encode(),
+                         stderr=subprocess.DEVNULL)
+        
+        # Eliminar usuarios del sistema que ya no están en JSON
+        moratech_users = [u for u in users.keys() if u != 'admin']
+        for sys_user in system_users:
+            # Solo eliminar usuarios creados por moratech (los que están en /home/moratech o sin home)
+            if sys_user.startswith('token_') or (sys_user in ['admin'] + moratech_users):
+                if sys_user not in moratech_users and sys_user != 'admin':
+                    subprocess.run(['userdel', '-f', sys_user], stderr=subprocess.DEVNULL)
+                    
+    except Exception as e:
+        pass  # Si falla, solo continuar (no bloquear el guardado del JSON)
 
 def load_token_config():
     """Carga config de tokens"""
