@@ -690,7 +690,7 @@ def protocols_menu():
         elif choice == '2':
             menu_phyton() 
         elif choice == '3':
-            install_v2ray()
+            menu_v2ray()
         elif choice == '5':
             menu_badvpn() 
         elif choice == '0':
@@ -1916,6 +1916,79 @@ def menu_v2ray():
                 
             elif choice == '0':
                 break
+
+def install_v2ray():
+    """Instalar 3X-UI (V2Ray Panel)"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}INSTALANDO 3X-UI (V2RAY PANEL){Color.END}")
+    print_line()
+    
+    print(f"\n {Color.YELLOW}3X-UI es un panel web para gestionar V2Ray/Xray{Color.END}")
+    print(f" {Color.YELLOW}Se instalará en el puerto 54321 (por defecto){Color.END}\n")
+    
+    confirm = input(f" {Color.GREEN}¿Continuar con la instalación? (s/n): {Color.END}").strip().lower()
+    if confirm != 's':
+        return
+    
+    try:
+        print(f"\n {Color.YELLOW}Descargando e instalando 3X-UI...{Color.END}")
+        print(f" {Color.CYAN}Esto puede tardar varios minutos...{Color.END}\n")
+        print_line()
+        
+        # Ejecutar instalación
+        result = subprocess.run([
+            'bash', '-c',
+            'curl -Ls https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh | bash'
+        ])
+        
+        print_line()
+        
+        if result.returncode == 0:
+            print(f"\n {Color.GREEN}✓ 3X-UI instalado correctamente{Color.END}")
+            
+            # Guardar en config
+            try:
+                with open(PROTOCOLS_FILE, 'r') as f:
+                    protocols = json.load(f)
+                
+                protocols['v2ray'] = {
+                    'enabled': True,
+                    'port': 54321,
+                    'type': '3x-ui'
+                }
+                
+                with open(PROTOCOLS_FILE, 'w') as f:
+                    json.dump(protocols, f, indent=4)
+            except:
+                pass
+            
+            print(f"\n {Color.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Color.END}")
+            print(f" {Color.YELLOW}Para acceder al panel 3X-UI, ejecuta:{Color.END}")
+            print(f" {Color.GREEN}x-ui{Color.END}")
+            print(f"\n {Color.YELLOW}O accede vía web:{Color.END}")
+            
+            # Obtener IP
+            try:
+                ip = subprocess.check_output(['curl', '-s', 'ifconfig.me']).decode().strip()
+                print(f" {Color.GREEN}http://{ip}:54321{Color.END}")
+            except:
+                print(f" {Color.GREEN}http://TU_IP:54321{Color.END}")
+            
+            print(f" {Color.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Color.END}")
+            
+            log_action("admin", "3X-UI instalado")
+        else:
+            print(f"\n {Color.RED}✗ Error durante la instalación{Color.END}")
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        import traceback
+        traceback.print_exc()
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
 
 def stop_v2ray():
     """Detener/Desinstalar 3X-UI"""
