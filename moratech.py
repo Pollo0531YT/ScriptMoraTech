@@ -782,15 +782,19 @@ def install_ssl():
         
         subprocess.run(['chmod', '600', '/etc/stunnel/stunnel.pem'])
         
-        # Configuración stunnel SIN protocol
+        # Configuración stunnel EXACTA como la que funciona
         stunnel_conf = f"""cert = /etc/stunnel/stunnel.pem
 client = no
 socket = a:SO_REUSEADDR=1
 socket = l:TCP_NODELAY=1
 socket = r:TCP_NODELAY=1
-TIMEOUTclose = 0
 
 [stunnel]
+connect = 127.0.0.1:{ssh_port}
+accept = {port}
+
+[stunnel-ssl]
+cert = /etc/stunnel/stunnel.pem
 accept = {port}
 connect = 127.0.0.1:{ssh_port}
 """
@@ -798,12 +802,22 @@ connect = 127.0.0.1:{ssh_port}
         with open('/etc/stunnel/stunnel.conf', 'w') as f:
             f.write(stunnel_conf)
         
+        # Configurar /etc/default/stunnel4
+        with open('/etc/default/stunnel4', 'r') as f:
+            content = f.read()
+        
+        if 'FILES="/etc/stunnel/*.conf"' not in content:
+            with open('/etc/default/stunnel4', 'a') as f:
+                f.write('\nFILES="/etc/stunnel/*.conf"\n')
+        
         # Habilitar stunnel
         subprocess.run(['sed', '-i', 's/ENABLED=0/ENABLED=1/g', '/etc/default/stunnel4'])
         
         # Iniciar
         print(f" {Color.YELLOW}Iniciando servicios...{Color.END}")
-        subprocess.run(['service', 'stunnel4', 'start'], stderr=subprocess.DEVNULL)
+        subprocess.run(['systemctl', 'daemon-reload'])
+        subprocess.run(['systemctl', 'restart', 'stunnel4'])
+        subprocess.run(['systemctl', 'enable', 'stunnel4'])
         
         import time
         time.sleep(2)
@@ -822,7 +836,13 @@ connect = 127.0.0.1:{ssh_port}
         configure_forwarding()
         print(f" {Color.GREEN}✓ Forwarding configurado{Color.END}")
         
-        # Guardar
+        # Verificar que el puerto está escuchando
+        time.sleep(1)
+        result = subprocess.run(['netstat', '-tlnp'], capture_output=True, text=True)
+        if f':{port}' in result.stdout and 'stunnel' in result.stdout:
+            print(f" {Color.GREEN}✓ Puerto {port} escuchando correctamente{Color.END}")
+        
+        # Guardar en config
         with open(PROTOCOLS_FILE, 'r') as f:
             protocols = json.load(f)
         
@@ -832,6 +852,7 @@ connect = 127.0.0.1:{ssh_port}
         with open(PROTOCOLS_FILE, 'w') as f:
             json.dump(protocols, f, indent=4)
         
+        # Limpiar archivos temporales
         subprocess.run(['rm', '-f', '/tmp/key.pem', '/tmp/cert.pem'])
         
         print(f"\n {Color.GREEN}✓ SSL instalado con certificado automático{Color.END}")
@@ -844,7 +865,7 @@ connect = 127.0.0.1:{ssh_port}
         traceback.print_exc()
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
+    
 def stop_ssl():
     """Detener SSL/Stunnel"""
     clear_screen()
