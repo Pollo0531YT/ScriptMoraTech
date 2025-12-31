@@ -387,7 +387,7 @@ def add_token_user():
         # Contraseña visible
         token_pass = input(f"{Color.GREEN}Contraseña maestra para tokens: {Color.END}").strip()
         
-        token_config['token_password'] = hashlib.sha256(token_pass.encode()).hexdigest()
+        token_config['token_password'] = token_pass
         save_token_config(token_config)
         print(f"{Color.GREEN}✓ Contraseña configurada{Color.END}\n")
     
@@ -411,7 +411,7 @@ def add_token_user():
         return
     
     users[token_username] = {
-        "password": token_config['token_password'],
+        "password": hashlib.sha256(token_config['token_password'].encode()).hexdigest(),
         "role": "user",
         "type": "token",
         "created": datetime.now().isoformat(),
@@ -573,6 +573,7 @@ def users_menu():
         print(f" {Color.GREEN}[09]{Color.END} ➮ Backup de usuarios")
         print(f" {Color.GREEN}[10]{Color.END} ➮ CheckUser Online")
         print(f" {Color.GREEN}[11]{Color.END} ➮ Bot Telegram")
+        print(f" {Color.GREEN}[12]{Color.END} ➮ Resetear contraseña Token")
         print_line()
         print(f" {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}Volver{Color.END}")
         print_line()
@@ -596,6 +597,8 @@ def users_menu():
         elif choice == '11':
             print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        elif choice == '12':
+            reset_token_password()
         elif choice == '0':
             break
 
@@ -1101,6 +1104,7 @@ if __name__ == '__main__':
 # ==================== EXTRAS ====================
 
 def check_and_free_port(port):
+    
     """Verifica y libera un puerto"""
     try:
         # Ver qué proceso usa el puerto
@@ -1116,6 +1120,33 @@ def check_and_free_port(port):
             time.sleep(1)
     except:
         pass
+
+def reset_token_password():
+    """Resetear contraseña de tokens"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}RESETEAR CONTRASEÑA DE TOKENS{Color.END}")
+    print_line()
+    
+    new_pass = input(f"\n {Color.GREEN}Nueva contraseña para tokens: {Color.END}").strip()
+    
+    token_config = load_token_config()
+    token_config['token_password'] = new_pass
+    save_token_config(token_config)
+    
+    # Actualizar todos los usuarios token existentes
+    users = load_users()
+    for username, data in users.items():
+        if data.get('type') == 'token':
+            users[username]['password'] = hashlib.sha256(token_config['token_password'].encode()).hexdigest()
+    save_users(users)
+    
+    print(f"\n {Color.GREEN}✓ Contraseña de tokens actualizada{Color.END}")
+    print(f" {Color.YELLOW}Todos los usuarios token ahora usan: {new_pass}{Color.END}")
+    log_action("admin", "Contraseña de tokens reseteada")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 # ==================== MENÚ PRINCIPAL ====================
 
 def main_menu(username):
