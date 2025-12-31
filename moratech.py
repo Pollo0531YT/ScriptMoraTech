@@ -677,6 +677,7 @@ socket = r:TCP_NODELAY=1
 [stunnel]
 connect = 127.0.0.1:{ssh_port}
 accept = {port}
+protocol = connect
 """
         
         with open('/etc/stunnel/stunnel.conf', 'w') as f:
