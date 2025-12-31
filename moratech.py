@@ -660,22 +660,21 @@ def protocols_menu():
     """Menú de protocolos"""
     while True:
         show_dashboard()
-        print(f"\n{Color.CYAN}╔══════════════════════════════════════════════════════════╗{Color.END}")
-        print(f"{Color.CYAN}║                  PROTOCOLOS                              ║{Color.END}")
-        print(f"{Color.CYAN}╚══════════════════════════════════════════════════════════╝{Color.END}\n")
-        
-        print(f"{Color.GREEN}1.{Color.END} SSL (Puerto 443)")
-        print(f"{Color.GREEN}2.{Color.END} V2Ray")
-        print(f"{Color.GREEN}3.{Color.END} SlowDNS")
-        print(f"{Color.GREEN}4.{Color.END} Proxy Python (Puerto 80)")
-        print(f"{Color.GREEN}5.{Color.END} BadVPN (Puerto 7300)")
+        print(f" {Color.CYAN}PROTOCOLOS{Color.END}")
+        print_line()
+  
+        print(f"{Color.GREEN}1.{Color.END} SSL")
+        print(f"{Color.GREEN}2.{Color.END} Python")
+        print(f"{Color.GREEN}3.{Color.END} V2Ray")
+        print(f"{Color.GREEN}4.{Color.END} SlowDNS")
+        print(f"{Color.GREEN}5.{Color.END} BadVPN")
         print(f"{Color.GREEN}0.{Color.END} Volver")
         
         choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
         if choice == '1':
-            install_ssl()
+            menu_ssl()
         elif choice == '4':
-            install_proxy()    
+            menu_phyton()    
         elif choice == '0':
             break
         else:
@@ -683,6 +682,28 @@ def protocols_menu():
             input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 # ==================== FUNCIONES DE PROTOCOLOS ====================
+def menu_ssl():
+    """Menu de ssl"""
+    while True:
+        show_dashboard()
+        print(f" {Color.CYAN}SSL{Color.END}")
+        print_line()
+  
+        print(f"{Color.GREEN}1.{Color.END} Iniciar SSL")
+        print(f"{Color.GREEN}2.{Color.END} Detener SSL")
+        print(f"{Color.GREEN}0.{Color.END} Volver")
+        
+        choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
+        if choice == '1':
+            install_ssl()
+        elif choice == '2':
+            stop_ssl()    
+        elif choice == '0':
+            break
+        else:
+            print(f"\n{Color.YELLOW}Función en desarrollo...{Color.END}")
+            input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+
 def install_ssl():
     """Instalar/Configurar SSL con Stunnel"""
     clear_screen()
@@ -821,6 +842,60 @@ protocol = connect
         traceback.print_exc()
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+def stop_ssl():
+    """Detener SSL/Stunnel"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}DETENER SSL{Color.END}")
+    print_line()
+    
+    try:
+        # Detener stunnel
+        subprocess.run(['pkill', '-f', 'stunnel4'], stderr=subprocess.DEVNULL)
+        subprocess.run(['pkill', '-f', 'stunnel'], stderr=subprocess.DEVNULL)
+        subprocess.run(['service', 'stunnel4', 'stop'], stderr=subprocess.DEVNULL)
+        
+        # Limpiar config
+        with open(PROTOCOLS_FILE, 'r') as f:
+            protocols = json.load(f)
+        
+        protocols['ssl']['enabled'] = False
+        
+        with open(PROTOCOLS_FILE, 'w') as f:
+            json.dump(protocols, f, indent=4)
+        
+        print(f"\n {Color.GREEN}✓ SSL detenido{Color.END}")
+        log_action("admin", "SSL detenido")
+        
+    except Exception as e:
+        print(f" {Color.RED}✗ Error: {e}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+def menu_phyton():
+    """Menu de phyton"""
+    while True:
+        show_dashboard()
+        print(f" {Color.CYAN}SSL{Color.END}")
+        print_line()
+  
+        print(f"{Color.GREEN}1.{Color.END} Iniciar PHYTON")
+        print(f"{Color.GREEN}2.{Color.END} Detener PHYTON")
+        print(f"{Color.GREEN}0.{Color.END} Volver")
+        
+        choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
+        if choice == '1':
+            install_proxy()
+        elif choice == '2':
+            stop_proxy()    
+        elif choice == '0':
+            break
+        else:
+            print(f"\n{Color.YELLOW}Función en desarrollo...{Color.END}")
+            input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+
 
 def install_proxy():
     """Instalar Proxy Python"""
@@ -1157,6 +1232,37 @@ if __name__ == '__main__':
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
         import traceback
         traceback.print_exc()
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+def stop_proxy():
+    """Detener Proxy Python"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}DETENER PROXY PYTHON{Color.END}")
+    print_line()
+    
+    try:
+        # Detener proceso
+        subprocess.run(['pkill', '-f', 'pythonwe'], stderr=subprocess.DEVNULL)
+        subprocess.run(['pkill', '-f', 'proxy.py'], stderr=subprocess.DEVNULL)
+        subprocess.run(['screen', '-S', 'pythonwe', '-X', 'quit'], stderr=subprocess.DEVNULL)
+        
+        # Limpiar config
+        with open(PROTOCOLS_FILE, 'r') as f:
+            protocols = json.load(f)
+        
+        protocols['proxy']['enabled'] = False
+        
+        with open(PROTOCOLS_FILE, 'w') as f:
+            json.dump(protocols, f, indent=4)
+        
+        print(f"\n {Color.GREEN}✓ Proxy detenido{Color.END}")
+        log_action("admin", "Proxy detenido")
+        
+    except Exception as e:
+        print(f" {Color.RED}✗ Error: {e}{Color.END}")
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 # ==================== EXTRAS ====================
