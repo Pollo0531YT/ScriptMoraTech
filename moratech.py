@@ -732,6 +732,7 @@ socket = r:TCP_NODELAY=1
 [stunnel]
 connect = 127.0.0.1:{ssh_port}
 accept = {port}
+protocol = connect
 """
         
         with open('/etc/stunnel/stunnel.conf', 'w') as f:
@@ -889,7 +890,7 @@ def install_proxy():
 import socket, threading, select, sys, time
 
 LISTENING_ADDR = '0.0.0.0'
-LISTENING_PORT = 1080
+LISTENING_PORT = {port}
 PASS = ''
 BUFLEN = 4096 * 4
 TIMEOUT = 60
@@ -1119,7 +1120,7 @@ if __name__ == '__main__':
         # Iniciar proxy en screen
         print(f" {Color.YELLOW}Iniciando proxy en segundo plano...{Color.END}")
         subprocess.run(['screen', '-wipe'], stderr=subprocess.DEVNULL)
-        subprocess.run(['screen', '-dmS', 'pythonwe', 'python2', '/root/proxy.py', '-p', port])
+        subprocess.run(['screen', '-dmS', 'pythonwe', 'python2', '/root/proxy.py'])
         
         import time
         time.sleep(2)
