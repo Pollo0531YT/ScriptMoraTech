@@ -288,9 +288,8 @@ def login():
         # Contraseña visible
         password = input(f" {Color.GREEN}Contraseña:{Color.END} ").strip()
         
-        password_hash = hashlib.sha256(password.encode()).hexdigest()
         
-        if username in users and users[username]['password'] == password_hash:
+        if username in users and users[username]['password'] == password:
             print(f"\n {Color.GREEN}✓ Login exitoso!{Color.END}")
             log_action(username, "Login exitoso")
             import time
@@ -359,7 +358,7 @@ def add_ssh_user():
         max_conn = 1
     
     users[username] = {
-        "password": hashlib.sha256(password.encode()).hexdigest(),
+        "password": password,
         "role": "user",
         "type": "ssh",
         "created": datetime.now().isoformat(),
@@ -411,7 +410,7 @@ def add_token_user():
         return
     
     users[token_username] = {
-        "password": hashlib.sha256(token_config['token_password'].encode()).hexdigest(),
+        "password": token_config['token_password'],
         "role": "user",
         "type": "token",
         "created": datetime.now().isoformat(),
