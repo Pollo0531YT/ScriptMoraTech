@@ -175,19 +175,8 @@ def init_system():
     CONFIG_DIR.mkdir(exist_ok=True)
     
     if not USERS_FILE.exists():
-        users = {
-            "admin": {
-                "password": "admin123",
-                "role": "admin",
-                "type": "ssh",
-                "created": datetime.now().isoformat(),
-                "expires": None,
-                "max_connections": 999,
-                "enabled": True
-            }
-        }
         with open(USERS_FILE, 'w') as f:
-            json.dump(users, f, indent=4)
+            json.dump({}, f)
     
     if not CONFIG_FILE.exists():
         config = {
@@ -2268,12 +2257,8 @@ def main_menu(username):
 def main():
     """Función principal"""
     init_system()
-    username = login()
-    
-    if username:
-        main_menu(username)
-    else:
-        sys.exit(1)
+    main_menu("admin")
+
 
 if __name__ == "__main__":
     main()
