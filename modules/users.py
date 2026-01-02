@@ -1246,7 +1246,6 @@ def menu_checkuser():
     elif choice == '0':
         return
 
-
 def start_checkuser_server():
     """Iniciar servidor CheckUser con Flask"""
     clear_screen()
@@ -1259,132 +1258,49 @@ def start_checkuser_server():
     if not port:
         port = "8888"
     
-    print(f"\n {Color.YELLOW}Creando servidor Flask...{Color.END}")
+    print(f"\n {Color.YELLOW}Iniciando servidor CheckUser...{Color.END}")
     
     try:
-        # Crear script Flask
-        flask_script = CONFIG_DIR / 'checkuser_server.py'
+        # Obtener ruta del script Flask
+        import os
+        flask_script = os.path.join(os.path.dirname(__file__), 'checkuser_flask.py')
         
-        flask_code = f'''#!/usr/bin/env python3
-import json
-from datetime import datetime
-from flask import Flask, request, jsonify
-from pathlib import Path
-
-app = Flask(__name__)
-
-@app.route('/')
-def home():
-    return "CheckUser MoraTech funcionando!", 200
-
-@app.route('/checkUser', methods=['GET'])
-def check_user_info():
-    return "CheckUser MoraTech - Use POST method with JSON: {'user': 'username'}", 200
-
-CONFIG_DIR = Path.home() / '.moratech'
-USERS_FILE = CONFIG_DIR / 'users.json'
-LOG_FILE = CONFIG_DIR / 'checkuser.log'
-
-def log_request(user, result):
-    """Registrar petición"""
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    with open(LOG_FILE, 'a') as f:
-        f.write(f"[{{timestamp}}] User: {{user}} -> Result: {{result}}\\n")
-
-@app.route('/checkUser', methods=['POST'])
-def check_user():
-    try:
-        # Leer datos del request
-        data = request.get_json()
-        username = data.get('user', '').strip()
-        
-        print(f"[CheckUser] Consultando: {{username}}")
-        log_request(username, "Query")
-        
-        if not username:
-            log_request(username, "Not exist - Empty user")
-            return jsonify("Not exist"), 200
-        
-        # Leer usuarios
-        with open(USERS_FILE, 'r') as f:
-            users = json.load(f)
-        
-        if username not in users:
-            log_request(username, "Not exist")
-            return jsonify("Not exist"), 200
-        
-        user_data = users[username]
-        expires = user_data.get('expires')
-        
-        if not expires:
-            # Usuario sin expiración
-            log_request(username, "No expiry")
-            return jsonify("Not exist"), 200
-        
-        # Parsear fecha de expiración
-        expire_date = datetime.fromisoformat(expires)
-        
-        # ⚠️ IMPORTANTE: Sumar 1 día para compatibilidad con Android
-        # El sistema Android resta 1 día, así que enviamos +1
-        expire_date_adjusted = expire_date.replace(day=expire_date.day + 1)
-        
-        # Formato: ddmmyyyy (sin separadores)
-        result = expire_date_adjusted.strftime('%d%m%Y')
-        
-        print(f"[CheckUser] Usuario {{username}} -> {{result}}")
-        log_request(username, result)
-        
-        return jsonify(result), 200
-        
-    except Exception as e:
-        print(f"[CheckUser] Error: {{e}}")
-        log_request("ERROR", str(e))
-        return jsonify("Not exist"), 500
-
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port={port}, debug=False)
-'''
-        
-        with open(flask_script, 'w') as f:
-            f.write(flask_code)
-        
-        # Hacer ejecutable
-        subprocess.run(['chmod', '+x', str(flask_script)])
-        
-        print(f" {Color.GREEN}✓ Script creado{Color.END}")
+        if not os.path.exists(flask_script):
+            print(f" {Color.RED}✗ Error: checkuser_flask.py no encontrado{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
         
         # Instalar Flask si no está
-        print(f"\n {Color.YELLOW}Verificando Flask...{Color.END}")
-
+        print(f" {Color.YELLOW}Verificando Flask...{Color.END}")
+        
         # Detectar pip disponible
         pip_cmd = None
         for cmd in ['pip', 'pip3', 'python3 -m pip', 'python -m pip']:
             try:
                 check = subprocess.run(cmd.split() + ['--version'], 
-                                    capture_output=True, text=True, timeout=5)
+                                     capture_output=True, text=True, timeout=5)
                 if check.returncode == 0:
                     pip_cmd = cmd
                     break
             except:
                 continue
-
+        
         if not pip_cmd:
-            print(f" {Color.RED}✗ pip no encontrado, instalando manualmente...{Color.END}")
-            # Intentar instalar pip
+            print(f" {Color.RED}✗ pip no encontrado, instalando...{Color.END}")
             subprocess.run(['apt-get', 'update'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             subprocess.run(['apt-get', 'install', '-y', 'python3-pip'], 
-                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             pip_cmd = 'pip3'
-
+        
         # Verificar si Flask está instalado
         try:
             result = subprocess.run(pip_cmd.split() + ['show', 'flask'], 
-                                capture_output=True, text=True)
+                                  capture_output=True, text=True)
             
             if result.returncode != 0:
                 print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
                 subprocess.run(pip_cmd.split() + ['install', 'flask', '--break-system-packages'], 
-                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                 print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
             else:
                 print(f" {Color.GREEN}✓ Flask ya instalado{Color.END}")
@@ -1395,25 +1311,29 @@ if __name__ == '__main__':
         subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
         
         # Iniciar servidor en screen
+        import time
         subprocess.run([
             'screen', '-dmS', 'moratech_checkuser',
-            'bash', '-c', f'cd {CONFIG_DIR} && python3 {flask_script}'
+            'python3', flask_script, port
         ])
-
+        
         # Esperar a que inicie
         time.sleep(2)
-
+        
         # Verificar si está corriendo
         check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
         if 'moratech_checkuser' not in check.stdout:
             print(f"\n {Color.RED}✗ El servidor no pudo iniciar{Color.END}")
-            print(f" {Color.YELLOW}Verificando error...{Color.END}")
+            print(f" {Color.YELLOW}Ejecutando manualmente para ver error...{Color.END}")
             
-            # Intentar ejecutar directamente para ver el error
-            result = subprocess.run(['python3', str(flask_script)], 
-                                capture_output=True, text=True, timeout=5)
+            result = subprocess.run(['python3', flask_script, port], 
+                                  capture_output=True, text=True, timeout=5)
             if result.stderr:
                 print(f" {Color.RED}{result.stderr}{Color.END}")
+            if result.stdout:
+                print(f" {Color.YELLOW}{result.stdout}{Color.END}")
+            
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
         
         # Guardar puerto
@@ -1433,6 +1353,7 @@ if __name__ == '__main__':
         print(f"\n {Color.CYAN}Configuración:{Color.END}")
         print(f" {Color.CYAN}Puerto: {Color.GREEN}{port}{Color.END}")
         print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/checkUser{Color.END}")
+        print(f" {Color.CYAN}Test: {Color.GREEN}http://{server_ip}:{port}/{Color.END}")
         
         print(f"\n {Color.YELLOW}Nota: El servidor quedará activo en background{Color.END}")
         print(f" {Color.YELLOW}Para ver logs: opción [1] en el menú{Color.END}")
@@ -1445,7 +1366,6 @@ if __name__ == '__main__':
         traceback.print_exc()
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
 
 def stop_checkuser_server():
     """Detener servidor CheckUser"""
