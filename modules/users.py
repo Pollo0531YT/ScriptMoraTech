@@ -482,7 +482,7 @@ def mostrar_users_registrados():
     input(f"\n {Color.CYAN}Presiona Enter para volver...{Color.END}")
 
 def info_exacta_usuario():
-    """Muestra la ficha técnica de un usuario o token específico"""
+    """Muestra la ficha técnica detallada de un usuario o token"""
     clear_screen()
     print_banner()
     print(f"\n{Color.CYAN}╔══════════════════════════════════════════════════════════╗{Color.END}")
@@ -490,46 +490,58 @@ def info_exacta_usuario():
     print(f"{Color.CYAN}╚══════════════════════════════════════════════════════════╝{Color.END}\n")
     
     users = load_users()
-    search = input(f" {Color.GREEN}Ingresa el nombre o token: {Color.END}").strip()
+    search = input(f" {Color.GREEN}Ingresa el nombre o token a consultar: {Color.END}").strip()
     
     if search in users:
         data = users[search]
         u_type = data.get('type', 'ssh').upper()
+        display_name = data.get('display_name', 'N/A')
         
-        # Lógica de Días
+        # --- Cálculo de Tiempos ---
         expires = data.get('expires')
         if expires:
             expire_dt = datetime.fromisoformat(expires)
-            if datetime.now() > expire_dt:
+            now = datetime.now()
+            if now > expire_dt:
                 dias_restantes = f"{Color.RED}EXPIRADO{Color.END}"
-                estado = f"{Color.RED}● INACTIVO{Color.END}"
+                estado_visual = f"{Color.RED}● INACTIVO / CADUCADO{Color.END}"
             else:
-                diff = (expire_dt - datetime.now()).days
-                dias_restantes = f"{Color.GREEN}{diff} días{Color.END}"
-                estado = f"{Color.GREEN}● ACTIVO (Vence el {expire_dt.strftime('%d/%m/%Y')}){Color.END}"
+                diff = (expire_dt - now).days
+                # Si queda menos de 1 día pero no ha vencido
+                dias_restantes = f"{Color.GREEN}{diff} días{Color.END}" if diff > 0 else f"{Color.YELLOW}Vence hoy{Color.END}"
+                estado_visual = f"{Color.GREEN}● ACTIVO (Vence: {expire_dt.strftime('%d/%m/%Y %H:%M')}){Color.END}"
         else:
             dias_restantes = f"{Color.CYAN}ILIMITADO{Color.END}"
-            estado = f"{Color.GREEN}● ACTIVO{Color.END}"
+            estado_visual = f"{Color.GREEN}● ACTIVO PERMANENTE{Color.END}"
 
-        # Mostrar Ficha
-        print(f"\n {Color.WHITE}Nombre/Etiqueta:{Color.END} {Color.YELLOW}{data.get('display_name', 'N/A')}{Color.END}")
-        print(f" {Color.WHITE}ID/Usuario:     {Color.END} {Color.YELLOW}{search}{Color.END}")
-        print(f" {Color.WHITE}Tipo de Cuenta: {Color.END} {Color.PURPLE}{u_type}{Color.END}")
-        print(f" {Color.WHITE}Días Restantes: {Color.END} {dias_restantes}")
-        print(f" {Color.WHITE}Estado Actual:  {Color.END} {estado}")
+        # --- Interfaz de Información ---
+        print(f" {Color.WHITE}┌──────────────────────────────────────────────────────────┐{Color.END}")
+        print(f"   {Color.WHITE}Nombre/Etiqueta:{Color.END}  {Color.YELLOW}{display_name}{Color.END}")
+        print(f"   {Color.WHITE}ID / Usuario:   {Color.END}  {Color.WHITE}{search}{Color.END}")
+        print(f"   {Color.WHITE}Tipo de Acceso: {Color.END}  {Color.PURPLE}{u_type}{Color.END}")
+        print(f"   {Color.WHITE}Password:       {Color.END}  {Color.GRAY}{data.get('password', '******')}{Color.END}")
+        print(f"   {Color.WHITE}Creado el:      {Color.END}  {data.get('created', 'N/A')[:10]}")
+        print(f" {Color.WHITE}├──────────────────────────────────────────────────────────┤{Color.END}")
+        print(f"   {Color.WHITE}Días Restantes: {Color.END}  {dias_restantes}")
+        print(f"   {Color.WHITE}Estado Actual:  {Color.END}  {estado_visual}")
         
-        # Extra: Mostrar si está conectado ahora
+        # --- Verificación en Tiempo Real ---
+        # Verificamos si existe en Linux y si tiene procesos
+        check_linux = subprocess.run(['id', search], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         check_online = subprocess.run(['pgrep', '-u', search], stdout=subprocess.DEVNULL)
-        if check_online.returncode == 0:
-            print(f" {Color.WHITE}En Línea:       {Color.END} {Color.GREEN}SÍ (Conectado ahora){Color.END}")
-        else:
-            print(f" {Color.WHITE}En Línea:       {Color.END} {Color.GRAY}NO{Color.END}")
+        
+        linux_status = f"{Color.GREEN}Sincronizado{Color.END}" if check_linux.returncode == 0 else f"{Color.RED}No existe en Linux{Color.END}"
+        online_status = f"{Color.GREEN}CONECTADO AHORA{Color.END}" if check_online.returncode == 0 else f"{Color.GRAY}Desconectado{Color.END}"
+        
+        print(f"   {Color.WHITE}Sinc. Linux:    {Color.END}  {linux_status}")
+        print(f"   {Color.WHITE}Conexión Live:  {Color.END}  {online_status}")
+        print(f" {Color.WHITE}└──────────────────────────────────────────────────────────┘{Color.END}")
 
     else:
-        print(f"\n {Color.RED}✗ El usuario o token '{search}' no existe.{Color.END}")
+        print(f"\n {Color.RED}✗ Error: El usuario o token '{search}' no existe en la base de datos.{Color.END}")
         
-    input(f"\n{Color.CYAN}Presiona Enter para volver...{Color.END}")
-    
+    input(f"\n{Color.CYAN}Presiona Enter para volver al menú...{Color.END}")
+       
 def reset_token_password():
     """Resetear contraseña de tokens"""
     clear_screen()
