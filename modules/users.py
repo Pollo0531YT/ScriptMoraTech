@@ -1300,26 +1300,26 @@ def start_checkuser_server():
             if result.returncode != 0:
                 print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
                 
-                # Intentar con python3 -m pip primero
+                # Usar apt-get (más confiable en Ubuntu)
                 install_result = subprocess.run(
-                    ['python3', '-m', 'pip', 'install', 'flask', '--break-system-packages'],
+                    ['apt-get', 'install', '-y', 'python3-flask'],
                     capture_output=True, text=True
                 )
+                
+                # Verificar instalación nuevamente
+                check_flask = subprocess.run(['python3', '-c', 'import flask'], 
+                                             capture_output=True, text=True)
                 
                 if install_result.returncode != 0:
                     # Fallback a pip normal
                     subprocess.run(pip_cmd.split() + ['install', 'flask', '--break-system-packages'], 
                                 capture_output=True, text=True)
                 
-                # Verificar instalación
-                check_flask = subprocess.run(['python3', '-c', 'import flask'], 
-                                            capture_output=True, text=True)
-                
                 if check_flask.returncode == 0:
                     print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
                 else:
-                    print(f" {Color.RED}✗ Flask no se pudo instalar correctamente{Color.END}")
-                    print(f" {Color.YELLOW}Intenta manualmente: python3 -m pip install flask --break-system-packages{Color.END}")
+                    print(f" {Color.RED}✗ Flask no se pudo instalar{Color.END}")
+                    print(f" {Color.YELLOW}Intenta manualmente: apt-get install -y python3-flask{Color.END}")
                     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
                     return
             else:
