@@ -29,6 +29,7 @@ def control_usuarios_menu():
         print(f" {Color.GREEN}[02]{Color.END} ➮ BORRAR 1/TODOS LOS USUARIO/s")
         print(f" {Color.GREEN}[03]{Color.END} ➮ EDITAR/RENOVAR USUARIOS")
         print(f" {Color.GREEN}[04]{Color.END} ➮ MOSTRAR USUARIOS REGISTRADOS")
+        print(f" {Color.GREEN}[05]{Color.END} ➮ INFO EXACTA DE USUARIO")
         print_line()
         print(f" {Color.GREEN}[09]{Color.END} ➮ BACKUP USUARIOS")
         print_line()
@@ -51,6 +52,8 @@ def control_usuarios_menu():
         elif choice == '3':
             editar_usuario()
         elif choice == '4':
+            mostrar_users_registrados()
+        elif choice == '5':
             mostrar_users_registrados()
         elif choice == '9':
             menu_backup()
@@ -339,116 +342,97 @@ def menu_borrar_usuarios():
             break
 
 def borrar_usuario_especifico():
-    """Eliminar usuario específico - Optimizado"""
+    """Eliminar usuario específico - Eliminación Real de Linux"""
     users = load_users()
     username = input(f"\n{Color.GREEN}Usuario a eliminar: {Color.END}").strip()
     
     if username in users:
-        print(f" {Color.YELLOW}🗑️  Eliminando {username}...{Color.END}", end="\r")
+        print(f" {Color.YELLOW}🗑️  Eliminando {username} del sistema...{Color.END}", end="\r")
         
-        # 1. Matar procesos primero
-        subprocess.run(['pkill', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # 1. Matar procesos para que no esté "busy" (ocupado)
+        subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
-        # 2. Quitar del diccionario
+        # 2. ELIMINACIÓN FÍSICA DE LINUX (Fundamental)
+        # -f fuerza la eliminación incluso si hay procesos pendientes
+        # -r borraría también su carpeta home (úsalo si la creas)
+        result = subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # 3. Quitar de tu base de datos JSON
         del users[username]
         
-        # 3. Sincronizar (Enviamos {} porque no hay nada que 'actualizar' en Linux, solo borrar)
+        # 4. Guardar cambios en el JSON (Sin intentar sincronizar nada más)
         if save_users({}, full_database=users):
-            moratech.log_action("admin", f"Usuario eliminado: {username}")
-            print(f"{' ' * 40}\r{Color.GREEN}✓ Usuario {username} eliminado y desconectado{Color.END}")
+            moratech.log_action("admin", f"Usuario eliminado y purgado: {username}")
+            print(f"{' ' * 50}\r{Color.GREEN}✓ Usuario {username} purgado totalmente del servidor{Color.END}")
         else:
-            print(f"\n{Color.RED}✗ Error al actualizar el sistema{Color.END}")
+            print(f"\n{Color.RED}✗ Error al guardar cambios en la base de datos{Color.END}")
     else:
-        print(f"{Color.RED}✗ Usuario no encontrado{Color.END}")
+        print(f"{Color.RED}✗ El usuario no existe en la base de datos{Color.END}")
     
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-
+    
 def borrar_iterativo():
-    """Eliminar usuarios uno por uno con sincronización final"""
+    """Eliminar usuarios uno por uno - Corregido"""
     users = load_users()
-    deleted_users = []
+    deleted_count = 0
 
     for username in list(users.keys()):
+        if username == "admin": continue
         print(f"\n{Color.YELLOW}Usuario: {Color.WHITE}{username}{Color.END}")
         confirm = input(f" ¿Eliminar? (s/n): ").strip().lower()
 
         if confirm == 's':
-            deleted_users.append(username)
+            # 1. Expulsar y Borrar de Linux REAL
+            subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # 2. Quitar del diccionario
             del users[username]
-            subprocess.run(['pkill', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print(f" {Color.RED}✗ Marcado para eliminar y expulsado{Color.END}")
+            deleted_count += 1
+            print(f" {Color.RED}✗ Eliminado del sistema{Color.END}")
 
-    if deleted_users:
-        print(f"\n{Color.YELLOW}⏳ Guardando cambios en el sistema...{Color.END}", end="\r")
-        if save_users({}, full_database=users):
-            print(f"{' ' * 40}\r{Color.GREEN}✓ {len(deleted_users)} usuarios eliminados correctamente{Color.END}")
-        else:
-            print(f"\n{Color.RED}✗ Error guardando cambios{Color.END}")
-    else:
-        print(f"\n{Color.CYAN}No se realizaron cambios.{Color.END}")
-
+    if deleted_count > 0:
+        save_users({}, full_database=users)
+        print(f"\n{Color.GREEN}✓ Proceso terminado. {deleted_count} usuarios purgados.{Color.END}")
+    
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def borrar_expirados():
-    """Eliminar usuarios caducados - Rápido y Limpio"""
+    """Eliminar usuarios caducados - Purgado Real"""
     clear_screen()
     print_banner()
-    print(f"\n {Color.CYAN}LIMPIEZA DE USUARIOS EXPIRADOS{Color.END}\n")
-
     users = load_users()
     now = datetime.now()
     to_delete = [u for u, d in users.items() if d.get('expires') and now > datetime.fromisoformat(d['expires'])]
 
     if not to_delete:
         print(f" {Color.GREEN}✨ No hay usuarios caducados.{Color.END}")
-        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-        return
-
-    print(f" {Color.YELLOW}Se encontraron {len(to_delete)} usuarios caducados.{Color.END}")
-    
-    for i, username in enumerate(to_delete, 1):
-        print(f"\r {Color.RED}Eliminando: {Color.YELLOW}{username:<15}{Color.END} ({i}/{len(to_delete)})", end="", flush=True)
-        subprocess.run(['pkill', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if username in users:
-            del users[username]
-
-    # Sincronización masiva final
-    if save_users({}, full_database=users):
-        print(f"\n\n {Color.GREEN}✓ Limpieza completada.{Color.END}")
-        moratech.log_action("admin", f"Limpieza: {len(to_delete)} expirados borrados")
     else:
-        print(f"\n\n {Color.RED}✗ Error al actualizar base de datos.{Color.END}")
+        print(f" {Color.YELLOW}Limpiando {len(to_delete)} usuarios...{Color.END}")
+        for username in to_delete:
+            subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            del users[username]
         
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        save_users({}, full_database=users)
+        print(f" {Color.GREEN}✓ Usuarios expirados eliminados físicamente.{Color.END}")
+        
+    input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def borrar_todos():
-    """Eliminar TODOS los usuarios - Transaccional"""
-    print(f"\n{Color.RED}⚠️  ADVERTENCIA: Se borrarán TODOS los usuarios{Color.END}")
-    confirm = input(f"{Color.YELLOW}Escribe 'CONFIRMAR' para continuar: {Color.END}").strip()
-    
-    if confirm == "CONFIRMAR":
+    """Eliminar TODOS los usuarios - Limpieza Total"""
+    print(f"\n{Color.RED}⚠️  ADVERTENCIA: LIMPIEZA TOTAL DEL SISTEMA{Color.END}")
+    if input(f"{Color.YELLOW}Escribe 'CONFIRMAR' para continuar: {Color.END}").strip() == "CONFIRMAR":
         users = load_users()
-        # Protegemos al admin si existe en el JSON
-        users_to_kill = [u for u in users.keys() if u != "admin"]
+        # Filtrar usuarios reales de Linux para borrar (menos admin)
+        for username in list(users.keys()):
+            if username != "admin":
+                subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
-        print(f"\n{Color.YELLOW}🔄 Limpiando sistema...{Color.END}")
-        
-        # 1. Matamos procesos primero
-        for i, user in enumerate(users_to_kill, 1):
-            print(f"\r {Color.RED}Expulsando: {i}/{len(users_to_kill)} [{user}]...{' ' * 5}", end="", flush=True)
-            subprocess.run(['pkill', '-u', user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # 2. Vaciamos la base de datos y sincronizamos
         if save_users({}, full_database={}):
-            print(f"\n\n{Color.GREEN}✓ Sistema resetado exitosamente.{Color.END}")
-            moratech.log_action("admin", "Eliminación masiva completa")
-        else:
-            print(f"\n{Color.RED}✗ Error crítico en el sistema.{Color.END}")
-    else:
-        print(f"\n{Color.YELLOW}Operación cancelada.{Color.END}")
-    
+            print(f"\n{Color.GREEN}✓ Servidor limpio de usuarios externos.{Color.END}")
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-    
+
 def mostrar_users_registrados():
     """Mostrar usuarios registrados con diseño jerárquico y contador final"""
     clear_screen()
@@ -497,6 +481,55 @@ def mostrar_users_registrados():
     
     input(f"\n {Color.CYAN}Presiona Enter para volver...{Color.END}")
 
+def info_exacta_usuario():
+    """Muestra la ficha técnica de un usuario o token específico"""
+    clear_screen()
+    print_banner()
+    print(f"\n{Color.CYAN}╔══════════════════════════════════════════════════════════╗{Color.END}")
+    print(f"{Color.CYAN}║                INFO EXACTA DE USUARIO                    ║{Color.END}")
+    print(f"{Color.CYAN}╚══════════════════════════════════════════════════════════╝{Color.END}\n")
+    
+    users = load_users()
+    search = input(f" {Color.GREEN}Ingresa el nombre o token: {Color.END}").strip()
+    
+    if search in users:
+        data = users[search]
+        u_type = data.get('type', 'ssh').upper()
+        
+        # Lógica de Días
+        expires = data.get('expires')
+        if expires:
+            expire_dt = datetime.fromisoformat(expires)
+            if datetime.now() > expire_dt:
+                dias_restantes = f"{Color.RED}EXPIRADO{Color.END}"
+                estado = f"{Color.RED}● INACTIVO{Color.END}"
+            else:
+                diff = (expire_dt - datetime.now()).days
+                dias_restantes = f"{Color.GREEN}{diff} días{Color.END}"
+                estado = f"{Color.GREEN}● ACTIVO (Vence el {expire_dt.strftime('%d/%m/%Y')}){Color.END}"
+        else:
+            dias_restantes = f"{Color.CYAN}ILIMITADO{Color.END}"
+            estado = f"{Color.GREEN}● ACTIVO{Color.END}"
+
+        # Mostrar Ficha
+        print(f"\n {Color.WHITE}Nombre/Etiqueta:{Color.END} {Color.YELLOW}{data.get('display_name', 'N/A')}{Color.END}")
+        print(f" {Color.WHITE}ID/Usuario:     {Color.END} {Color.YELLOW}{search}{Color.END}")
+        print(f" {Color.WHITE}Tipo de Cuenta: {Color.END} {Color.PURPLE}{u_type}{Color.END}")
+        print(f" {Color.WHITE}Días Restantes: {Color.END} {dias_restantes}")
+        print(f" {Color.WHITE}Estado Actual:  {Color.END} {estado}")
+        
+        # Extra: Mostrar si está conectado ahora
+        check_online = subprocess.run(['pgrep', '-u', search], stdout=subprocess.DEVNULL)
+        if check_online.returncode == 0:
+            print(f" {Color.WHITE}En Línea:       {Color.END} {Color.GREEN}SÍ (Conectado ahora){Color.END}")
+        else:
+            print(f" {Color.WHITE}En Línea:       {Color.END} {Color.GRAY}NO{Color.END}")
+
+    else:
+        print(f"\n {Color.RED}✗ El usuario o token '{search}' no existe.{Color.END}")
+        
+    input(f"\n{Color.CYAN}Presiona Enter para volver...{Color.END}")
+    
 def reset_token_password():
     """Resetear contraseña de tokens"""
     clear_screen()
