@@ -141,18 +141,32 @@ def get_active_ports():
             if badvpn_ports:
                 ports['BadVPN'] = f"{', '.join(set(badvpn_ports))} ✓"
         
-        # Detectar V2Ray/3X-UI
+        # Detectar V2Ray/3X-UI - TODOS LOS PUERTOS
         v2ray_check = subprocess.run(['systemctl', 'is-active', 'x-ui'], capture_output=True, text=True)
         if 'active' in v2ray_check.stdout:
-            # Buscar puerto (normalmente 54321)
+            v2ray_ports = []
+            
+            # Buscar todos los puertos de xray/x-ui
             for line in output.split('\n'):
-                if 'x-ui' in line or ':54321' in line:
+                if 'xray' in line.lower() or 'x-ui' in line.lower():
                     match = re.search(r':(\d+)\s', line)
                     if match:
-                        ports['V2Ray'] = f"{match.group(1)} ✓"
-                        break
-            if 'V2Ray' not in ports:
-                ports['V2Ray'] = '54321 ✓'
+                        v2ray_ports.append(match.group(1))
+            
+            # También revisar procesos de xray directamente
+            xray_ps = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
+            for ps_line in xray_ps.stdout.split('\n'):
+                if 'xray' in ps_line.lower():
+                    # Buscar patrones de puerto en los argumentos
+                    port_matches = re.findall(r':(\d{4,5})', ps_line)
+                    for port in port_matches:
+                        if port not in ['127.0', '0.0.0']:  # Filtrar IPs
+                            v2ray_ports.append(port)
+            
+            if v2ray_ports:
+                # Eliminar duplicados y ordenar
+                v2ray_ports = sorted(list(set(v2ray_ports)))
+                ports['V2Ray'] = f"{', '.join(v2ray_ports)} ✓"
         
         # Detectar SlowDNS
         if ':5300 ' in output or ':5300\n' in output:
