@@ -257,61 +257,94 @@ def editar_usuario():
     
     if choice == '1':
         # Sumar días
-        days_to_add = input(f"\n {Color.GREEN}Días a sumar: {Color.END}").strip()
+        days_to_add_input = input(f"\n {Color.GREEN}Días a sumar: {Color.END}").strip()
         try:
-            days_to_add = int(days_to_add)
+            days_to_add = int(days_to_add_input)
+            now = datetime.now()
             
+            # 1. Lógica de cálculo de fecha
             if user_data.get('expires'):
                 current_expire = datetime.fromisoformat(user_data['expires'])
-                if datetime.now() > current_expire:
+                if now > current_expire:
                     # Si ya expiró, sumar desde hoy a las 6pm
-                    expire_date = (datetime.now().date() + timedelta(days=days_to_add))
-                    new_expire = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
+                    base_date = now.date()
                 else:
-                    # Si no ha expirado, sumar días manteniendo la hora 6pm
-                    new_expire = current_expire + timedelta(days=days_to_add)
+                    # Si no ha expirado, sumar a la fecha que ya tenía
+                    base_date = current_expire.date()
             else:
-                # Si no tiene expiración, crear desde hoy a las 6pm
-                expire_date = (datetime.now().date() + timedelta(days=days_to_add))
-                new_expire = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
+                # Si no tiene fecha, empezar desde hoy
+                base_date = now.date()
 
+            # Calcular la nueva fecha final (Siempre a las 6:00 PM)
+            expire_date = base_date + timedelta(days=days_to_add)
+            new_expire = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
+
+            # Actualizar datos
             users[username_input]['expires'] = new_expire.isoformat()
             users[username_input]['enabled'] = True
 
+            # 2. EFECTO VISUAL DE PROCESAMIENTO
+            print(f"\n {Color.YELLOW}⏳ Actualizando vigencia del usuario...{Color.END}")
+            print(f" {Color.CYAN}Recalculando fecha: {new_expire.strftime('%d/%m/%Y')}{Color.END}", end="\r", flush=True)
+
+            # 3. Guardar y sincronizar
             if save_users(users):
-                new_days = (new_expire - datetime.now()).days
-                print(f"\n {Color.GREEN}✓ Se sumaron {days_to_add} días{Color.END}")
-                print(f" {Color.CYAN}Nuevo total: {new_days} días{Color.END}")
+                # Calcular días restantes reales para el mensaje final
+                total_restante = (new_expire - now).days
+                
+                # Limpiar línea de carga
+                print(" " * 60, end="\r")
+                print(f" {Color.GREEN}✓ Vigencia extendida exitosamente{Color.END}")
+                print(f" {Color.CYAN}Se agregaron: {Color.YELLOW}{days_to_add} días{Color.END}")
+                print(f" {Color.CYAN}Total actual: {Color.GREEN}{total_restante} días restantes{Color.END}")
+                print(f" {Color.CYAN}Nueva fecha:  {Color.WHITE}{new_expire.strftime('%d/%m/%Y %H:%M')}{Color.END}")
+                
                 moratech.log_action("admin", f"Días sumados a {username_input}: +{days_to_add}")
             else:
-                print(f" {Color.RED}✗ Los cambios NO fueron aplicados{Color.END}")
-        except:
-            print(f" {Color.RED}✗ Valor inválido{Color.END}")
+                print(f"\n {Color.RED}✗ Error: No se pudo sincronizar con el sistema Linux{Color.END}")
+
+        except ValueError:
+            print(f"\n {Color.RED}✗ Error: Ingresa un número de días válido.{Color.END}")
+        except Exception as e:
+            print(f"\n {Color.RED}✗ Error inesperado: {e}{Color.END}")
     
     elif choice == '2':
         # Reiniciar días
-        new_days = input(f"\n {Color.GREEN}Nuevos días (0 = hoy 6pm): {Color.END}").strip()
+        new_days_input = input(f"\n {Color.GREEN}Nuevos días (0 = hoy 6pm): {Color.END}").strip()
         try:
-            new_days = int(new_days)
+            new_days = int(new_days_input)
             
+            # 1. Preparar la nueva fecha
             if new_days >= 0:
-                # Calcular fecha de expiración a las 6pm
                 expire_date = (datetime.now().date() + timedelta(days=new_days))
                 new_expire = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
                 users[username_input]['expires'] = new_expire.isoformat()
                 users[username_input]['enabled'] = True
+                total_text = f"{new_days} días (Vence: {new_expire.strftime('%d/%m/%Y %H:%M')})"
             else:
                 users[username_input]['expires'] = None
-            
+                total_text = "ILIMITADO"
+
+            # 2. EFECTO DE CARGA (Para que no parezca pegado)
+            print(f"\n {Color.YELLOW}🔄 Sincronizando cambios con el sistema...{Color.END}")
+            # Un pequeño mensaje dinámico opcional para dar feedback visual inmediato
+            print(f" {Color.CYAN}Aplicando nuevos días a {Color.GREEN}{username_input}{Color.END}...", end="\r", flush=True)
+
+            # 3. Guardar y Sincronizar
             if save_users(users):
-                print(f"\n {Color.GREEN}✓ Días reiniciados{Color.END}")
-                print(f" {Color.CYAN}Nuevo total: {new_days if new_days > 0 else 'ILIMITADO'} días{Color.END}")
+                # Limpiar la línea de "Aplicando..." y mostrar éxito
+                print(" " * 60, end="\r") # Borra la línea anterior
+                print(f" {Color.GREEN}✓ Días reiniciados correctamente{Color.END}")
+                print(f" {Color.CYAN}Nuevo total: {Color.YELLOW}{total_text}{Color.END}")
                 moratech.log_action("admin", f"Días reiniciados para {username_input}: {new_days}")
             else:
-                print(f" {Color.RED}✗ Los cambios NO fueron aplicados{Color.END}")
-        except:
-            print(f" {Color.RED}✗ Valor inválido{Color.END}")
-    
+                print(f"\n {Color.RED}✗ Error: Los cambios no se aplicaron al sistema Linux{Color.END}")
+        
+        except ValueError:
+            print(f"\n {Color.RED}✗ Error: Ingresa un número válido de días.{Color.END}")
+        except Exception as e:
+            print(f"\n {Color.RED}✗ Error inesperado: {e}{Color.END}")
+
     elif choice == '3':
         # Cambiar contraseña
         if user_data.get('type') == 'token':
@@ -319,29 +352,41 @@ def editar_usuario():
             print(f" {Color.YELLOW}Usa la opción [12] del menú principal para cambiarla{Color.END}")
         else:
             new_pass = input(f"\n {Color.GREEN}Nueva contraseña: {Color.END}").strip()
-            users[username_input]['password'] = new_pass
-            if save_users(users):
-                print(f"\n {Color.GREEN}✓ Contraseña actualizada{Color.END}")
-                moratech.log_action("admin", f"Contraseña cambiada para {username_input}")
+            if not new_pass:
+                print(f" {Color.RED}✗ La contraseña no puede estar vacía{Color.END}")
             else:
-                print(f" {Color.RED}✗ Los cambios NO fueron aplicados{Color.END}")
-    
+                users[username_input]['password'] = new_pass
+                
+                print(f"\n {Color.YELLOW}🔄 Sincronizando nueva contraseña...{Color.END}", end="\r", flush=True)
+                
+                if save_users(users):
+                    print(f"{' ' * 40}\r {Color.GREEN}✓ Contraseña actualizada correctamente{Color.END}")
+                    moratech.log_action("admin", f"Contraseña cambiada para {username_input}")
+                else:
+                    print(f"\n {Color.RED}✗ Error: No se pudo actualizar en el sistema{Color.END}")
+                    
     elif choice == '4':
         # Eliminar usuario
         confirm = input(f"\n {Color.RED}¿Eliminar usuario {username_input}? (s/n): {Color.END}").strip().lower()
         if confirm == 's':
+            print(f"\n {Color.YELLOW}🗑️  Eliminando {username_input}...{Color.END}")
+            
+            # 1. Desconectar procesos inmediatamente
+            print(f" {Color.CYAN}Expulsando conexiones activas...{Color.END}", end="\r", flush=True)
+            subprocess.run(['pkill', '-u', username_input], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            # 2. Borrar del diccionario
             del users[username_input]
+            
+            # 3. Sincronizar con el sistema
             if save_users(users):
-                # Desconectar usuario
-                subprocess.run(['pkill', '-u', username_input], stderr=subprocess.DEVNULL)
-
-                print(f"\n {Color.GREEN}✓ Usuario eliminado y desconectado{Color.END}")
+                print(f"{' ' * 50}\r {Color.GREEN}✓ Usuario eliminado y procesos cerrados{Color.END}")
                 moratech.log_action("admin", f"Usuario eliminado: {username_input}")
             else:
-                print(f" {Color.RED}✗ Error eliminando usuario{Color.END}")
+                print(f"\n {Color.RED}✗ Error al limpiar el usuario del sistema{Color.END}")
         else:
-            print(f" {Color.YELLOW}Operación cancelada{Color.END}")
-    
+            print(f"\n {Color.YELLOW}Operación cancelada.{Color.END}")
+            
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
    
 def menu_borrar_usuarios():
