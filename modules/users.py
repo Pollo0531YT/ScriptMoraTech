@@ -417,32 +417,64 @@ def borrar_iterativo():
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def borrar_expirados():
-    """Eliminar solo usuarios caducados"""
+    """Eliminar solo usuarios caducados con limpieza visual"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}LIMPIEZA DE USUARIOS EXPIRADOS{Color.END}")
+    print_line()
+
     users = load_users()
-    deleted = 0
-    deleted_users = []
-
-    for username in list(users.keys()):
-        user_data = users[username]
-        if user_data.get('expires'):
-            expire_date = datetime.fromisoformat(user_data['expires'])
-            if datetime.now() > expire_date:
-                deleted_users.append(username)
-                del users[username]
-                deleted += 1
-                print(f"{Color.GREEN}✓ Eliminado: {username}{Color.END}")
+    now = datetime.now()
     
-    if save_users(users):
-        # Desconectar usuarios eliminados
-        for user in deleted_users:
-             subprocess.run(['pkill', '-u', user], stderr=subprocess.DEVNULL)
+    # Identificar quiénes han caducado
+    to_delete = []
+    for username, data in users.items():
+        if data.get('expires'):
+            expire_date = datetime.fromisoformat(data['expires'])
+            if now > expire_date:
+                to_delete.append((username, data.get('type', 'ssh')))
 
-        print(f"\n{Color.YELLOW}Total eliminados: {deleted}{Color.END}")
-    else:
-        print(f"\n{Color.RED}✗ Error guardando cambios{Color.END}")
+    if not to_delete:
+        print(f"\n {Color.GREEN}✨ No se encontraron usuarios caducados.{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+
+    total = len(to_delete)
+    print(f"\n {Color.YELLOW}Se encontraron {total} usuarios caducados.{Color.END}")
+    print(f" {Color.CYAN}Iniciando limpieza silenciosa...{Color.END}\n")
+
+    deleted_count = 0
+    
+    for i, (username, u_type) in enumerate(to_delete, 1):
+        # 1. Mostrar progreso dinámico
+        # Usamos :<10 para el tipo y :<15 para el nombre para que todo quede alineado
+        print(f"\r {Color.RED}Eliminando: {Color.YELLOW}[{u_type.upper():<5}]{Color.END} {Color.GREEN}{username:<15}{Color.END} ({i}/{total})...{' '*5}", end="", flush=True)
         
-    input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+        # 2. Eliminar del diccionario principal
+        if username in users:
+            del users[username]
+        
+        # 3. Forzar desconexión inmediata
+        subprocess.run(['pkill', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        # 4. Intentar eliminar del sistema Linux directamente (opcional pero recomendado)
+        # Esto evita que save_users tenga que procesarlo después
+        subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        deleted_count += 1
 
+    # Guardar la base de datos actualizada sin los expirados
+    # IMPORTANTE: save_users debe tener internamente redirección a DEVNULL para ser 100% silencioso
+    if save_users(users):
+        print(f"\n\n {Color.GREEN}✓ Limpieza completada con éxito.{Color.END}")
+        print(f" {Color.CYAN}Total eliminados: {deleted_count}{Color.END}")
+        moratech.log_action("admin", f"Limpieza automática: {deleted_count} expirados eliminados")
+    else:
+        print(f"\n\n {Color.RED}✗ Error al actualizar la base de datos.{Color.END}")
+        
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    
 def borrar_todos():
     """Eliminar TODOS los usuarios con barra de progreso"""
     print(f"\n{Color.RED}⚠️  ADVERTENCIA: Esto eliminará TODOS los usuarios (excepto admin){Color.END}")
