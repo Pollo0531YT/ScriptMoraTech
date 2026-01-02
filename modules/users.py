@@ -559,29 +559,33 @@ def borrar_todos():
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def mostrar_users_registrados():
-    """Mostrar usuarios registrados"""
+    """Mostrar usuarios registrados con diseño jerárquico y contador final"""
     clear_screen()
     print_banner()
     print(f"\n{Color.CYAN}╔══════════════════════════════════════════════════════════╗{Color.END}")
-    print(f"{Color.CYAN}║              USUARIOS REGISTRADOS                        ║{Color.END}")
+    print(f"{Color.CYAN}║              LISTADO DE USUARIOS REGISTRADOS             ║{Color.END}")
     print(f"{Color.CYAN}╚══════════════════════════════════════════════════════════╝{Color.END}\n")
     
     users = load_users()
+    total_users = len(users)
     
     if not users:
-        print(f" {Color.YELLOW}No hay usuarios registrados{Color.END}")
+        print(f" {Color.YELLOW}No hay usuarios registrados en la base de datos.{Color.END}")
     else:
         for username, data in users.items():
             user_type = data.get('type', 'ssh')
             expires = data.get('expires')
             
-            # Mostrar nombre visible para tokens
+            # --- NIVEL 1: Nombre y Tipo ---
             if user_type == 'token':
-                display_name = data.get('display_name', username)
-                user_label = f"{display_name} ({username})"
+                display_name = data.get('display_name', 'Sin Nombre')
+                print(f" {Color.WHITE}{display_name}{Color.END} - {Color.MAGENTA}(TOKEN){Color.END}")
+                detail_id = username
             else:
-                user_label = f"{username} (ssh)"
-            
+                print(f" {Color.WHITE}{username}{Color.END} - {Color.BLUE}(SSH){Color.END}")
+                detail_id = username
+
+            # --- CÁLCULO DE STATUS ---
             if expires:
                 expire_date = datetime.fromisoformat(expires)
                 if datetime.now() > expire_date:
@@ -590,11 +594,17 @@ def mostrar_users_registrados():
                     days = (expire_date - datetime.now()).days
                     status = f"{Color.GREEN}{days} días{Color.END}"
             else:
-                status = f"{Color.BLUE}ILIMITADO{Color.END}"
-            
-            print(f"{Color.YELLOW}{user_label}{Color.END} - {status}")
+                status = f"{Color.CYAN}ILIMITADO{Color.END}"
+
+            # --- NIVEL 2: Detalle Técnico (Flecha) ---
+            # Usamos :<20 para alinear la columna de los días
+            print(f" {Color.CYAN}└─>{Color.END} {Color.YELLOW}{detail_id:<18}{Color.END} | {status}")
+            print(f" {Color.GRAY}{'─' * 45}{Color.END}") # Línea divisora sutil
+
+        # --- RESUMEN FINAL ---
+        print(f"\n {Color.CYAN}Total usuarios registrados:{Color.END} {Color.GREEN}{total_users}{Color.END}")
     
-    input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+    input(f"\n {Color.CYAN}Presiona Enter para volver...{Color.END}")
 
 def reset_token_password():
     """Resetear contraseña de tokens"""
