@@ -217,9 +217,7 @@ def delete_specific_user():
     
     username = input(f"\n{Color.GREEN}Usuario a eliminar: {Color.END}").strip()
     
-    if username == "admin":
-        print(f"{Color.RED}✗ No puedes eliminar el usuario admin{Color.END}")
-    elif username in users:
+    if username in users:
         del users[username]
         save_users(users)
         moratech.log_action("admin", f"Usuario eliminado: {username}")
@@ -234,9 +232,6 @@ def delete_iterative():
     users = load_users()
     
     for username in list(users.keys()):
-        if username == "admin":
-            continue
-        
         print(f"\n{Color.YELLOW}Usuario: {username}{Color.END}")
         confirm = input(f"¿Eliminar? (s/n): ").strip().lower()
         
@@ -253,9 +248,6 @@ def delete_expired():
     deleted = 0
     
     for username in list(users.keys()):
-        if username == "admin":
-            continue
-        
         user_data = users[username]
         if user_data.get('expires'):
             expire_date = datetime.fromisoformat(user_data['expires'])
@@ -274,7 +266,7 @@ def delete_all_users():
     confirm = input(f"{Color.YELLOW}Escribe 'CONFIRMAR' para continuar: {Color.END}").strip()
     
     if confirm == "CONFIRMAR":
-        users = {"admin": load_users()["admin"]}
+        users = {}
         save_users(users)
         moratech.log_action("admin", "Todos los usuarios eliminados")
         print(f"{Color.GREEN}✓ Todos los usuarios eliminados{Color.END}")
@@ -380,8 +372,8 @@ def save_users(users):
         moratech_users = [u for u in users.keys() if u != 'admin']
         for sys_user in system_users:
             # Solo eliminar usuarios creados por moratech (los que están en /home/moratech o sin home)
-            if sys_user.startswith('token_') or (sys_user in ['admin'] + moratech_users):
-                if sys_user not in moratech_users and sys_user != 'admin':
+            if sys_user.startswith('token_') or sys_user in moratech_users:
+                if sys_user not in moratech_users:
                     subprocess.run(['userdel', '-f', sys_user], stderr=subprocess.DEVNULL)
                     
     except Exception as e:

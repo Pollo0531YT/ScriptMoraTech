@@ -273,12 +273,6 @@ def show_dashboard():
     print(f" {Color.CYAN}∘{Color.END} U/RAM: {Color.GREEN}{info.get('ram_percent', 'N/A')}{Color.END}  {Color.CYAN}∘{Color.END} U/CPU: {Color.GREEN}{info.get('cpu_percent', 'N/A')}{Color.END}")
     print_line()
 
-
-def load_users():
-    """Carga usuarios"""
-    with open(USERS_FILE, 'r') as f:
-        return json.load(f)
-    
 # ==================== MENÚ DE PROTOCOLOS ====================
 
 def protocols_menu():
