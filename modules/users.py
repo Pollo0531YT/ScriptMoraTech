@@ -660,9 +660,9 @@ def menu_backup():
             pass
         
         print_line()
-        print(f" {Color.GREEN}[1]{Color.END} ➮ Respaldar usuarios [EN LÍNEA]")
-        print(f" {Color.GREEN}[2]{Color.END} ➮ Restaurar usuarios [EN LÍNEA]")
-        print(f" {Color.GREEN}[3]{Color.END} ➮ Restaurar usuarios [LOCALMENTE]")
+        print(f" {Color.GREEN}[1]{Color.END} ➮ Respaldar usuarios [EN LÍNEA - CHUMO]")
+        print(f" {Color.GREEN}[2]{Color.END} ➮ Restaurar usuarios [EN LÍNEA - CHUMO]")
+        print(f" {Color.GREEN}[3]{Color.END} ➮ Restaurar usuarios [LOCALMENTE - CHUMO]")
         print(f" {Color.GREEN}[4]{Color.END} ➮ Ver backups locales")
         print_line()
         print(f" {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}Volver{Color.END}")
@@ -671,17 +671,19 @@ def menu_backup():
         choice = input(f" {Color.CYAN}►{Color.END} Opción: ").strip()
         
         if choice == '1':
-            backup_online()
+            backup_online_chumo()
         elif choice == '2':
-            restore_online()
+            restore_online_chumo()
         elif choice == '3':
-            restore_local_m()
+            restore_local_chumo()
         elif choice == '4':
-            list_backups_m()
+            list_backups_chumo()
         elif choice == '0':
             break
 
-def backup_online():
+# sistema de backups compatible con chumo
+
+def backup_online_chumo():
     """Respaldar usuarios en línea (formato texto compatible)"""
     clear_screen()
     print_banner()
@@ -718,7 +720,7 @@ def backup_online():
                 expires = data.get('expires')
                 if expires:
                     expire_date = datetime.fromisoformat(expires)
-                    days = max(0, (expire_date - datetime.now()).days)
+                    days = max(0, (expire_date - datetime.now()).days + 1)
                 else:
                     days = 0
                 
@@ -728,7 +730,7 @@ def backup_online():
                 expires = data.get('expires')
                 if expires:
                     expire_date = datetime.fromisoformat(expires)
-                    days = max(0, (expire_date - datetime.now()).days)
+                    days = max(0, (expire_date - datetime.now()).days + 1)
                 else:
                     days = 0
                 
@@ -799,9 +801,7 @@ def backup_online():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
-# sistema de backups compatible con chumo
-
-def restore_online():
+def restore_online_chumo():
     """Restaurar usuarios desde servidor HTTP (formato texto)"""
     clear_screen()
     print_banner()
@@ -870,13 +870,19 @@ def restore_online():
                         password = parts[1]
                         days = int(parts[3])
                         display_name = parts[4]
+
                         
                         # Guardar contraseña token si es la primera
                         if not token_config.get('token_password'):
                             token_config['token_password'] = password
                             save_token_config(token_config)
                         
-                        expires = (datetime.now() + timedelta(days=days)).isoformat() if days > 0 else None
+                        #expires = (datetime.now() + timedelta(days=days)).isoformat() if days > 0 else None
+
+                        # AJUSTE: Restamos 1 día si el backup trae días de más (CHUMO)
+                        real_days = max(0, days - 1)
+                        expire_date = (datetime.now().date() + timedelta(days=real_days))
+                        expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
                         
                         users[token] = {
                             "password": token_config['token_password'],
@@ -897,8 +903,11 @@ def restore_online():
                         max_conn = int(parts[2])
                         days = int(parts[3])
                         
-                        expires = (datetime.now() + timedelta(days=days)).isoformat() if days > 0 else None
-                        
+                        #expires = (datetime.now() + timedelta(days=days)).isoformat() if days > 0 else None
+                        real_days = max(0, days - 1)
+                        expire_date = (datetime.now().date() + timedelta(days=real_days))
+                        expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
+
                         users[username] = {
                             "password": password,
                             "role": "user",
@@ -949,254 +958,127 @@ def restore_online():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
-def backup_online_m():
-    """Respaldar usuarios en línea (servidor HTTP)"""
+def restore_local_chumo():
+    """Restaurar usuarios desde backup local (formato .txt Chumo)"""
     clear_screen()
     print_banner()
     print_line()
-    print(f" {Color.CYAN}RESPALDAR USUARIOS EN LÍNEA{Color.END}")
-    print_line()
-    
-    print(f"\n {Color.YELLOW}Creando backup...{Color.END}")
-    
-    try:
-        # Crear backup local primero
-        backup_dir = CONFIG_DIR / 'backups'
-        backup_dir.mkdir(exist_ok=True)
-        
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        backup_filename = f'backup_{timestamp}.json'
-        backup_path = backup_dir / backup_filename
-        
-        # Leer usuarios actuales
-        users = load_users()
-        
-        # Crear backup con metadata
-        backup_data = {
-            'timestamp': datetime.now().isoformat(),
-            'users_count': len(users),
-            'users': users
-        }
-        
-        # Guardar localmente
-        with open(backup_path, 'w') as f:
-            json.dump(backup_data, f, indent=4)
-        
-        print(f" {Color.GREEN}✓ Backup local creado: {backup_filename}{Color.END}")
-        
-        # Obtener IP del servidor
-        import subprocess
-        try:
-            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
-                                     capture_output=True, text=True, timeout=3)
-            server_ip = ip_result.stdout.strip()
-        except:
-            server_ip = "TU_IP"
-        
-        # Configurar servidor HTTP
-        print(f"\n {Color.YELLOW}Configurando servidor HTTP...{Color.END}")
-        
-        port = input(f" {Color.GREEN}Puerto para servidor HTTP (default: 8000): {Color.END}").strip()
-        if not port:
-            port = "8000"
-        
-        # Iniciar servidor HTTP en background
-        import subprocess
-        subprocess.run([
-            'screen', '-dmS', 'moratech_backup',
-            'python3', '-m', 'http.server', port,
-            '--directory', str(backup_dir)
-        ])
-        
-        # Abrir puerto en firewall
-        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
-        
-        backup_url = f"http://{server_ip}:{port}/{backup_filename}"
-        
-        print(f"\n {Color.GREEN}✓ Servidor HTTP iniciado en puerto {port}{Color.END}")
-        print(f"\n {Color.CYAN}URL del backup:{Color.END}")
-        print(f" {Color.GREEN}{backup_url}{Color.END}")
-        
-        # Guardar URL del backup
-        url_file = CONFIG_DIR / 'last_backup_url.txt'
-        with open(url_file, 'w') as f:
-            f.write(f"{backup_url}\n")
-        
-        print(f"\n {Color.YELLOW}Nota: El servidor HTTP quedará activo.{Color.END}")
-        print(f" {Color.YELLOW}Para detenerlo: screen -S moratech_backup -X quit{Color.END}")
-        
-        moratech.log_action("admin", f"Backup en línea creado: {backup_url}")
-        
-    except Exception as e:
-        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
-        import traceback
-        traceback.print_exc()
-    
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
-def restore_online_m():
-    """Restaurar usuarios desde servidor HTTP"""
-    clear_screen()
-    print_banner()
-    print_line()
-    print(f" {Color.CYAN}RESTAURAR USUARIOS EN LÍNEA{Color.END}")
-    print_line()
-    
-    # Mostrar última URL guardada
-    try:
-        url_file = CONFIG_DIR / 'last_backup_url.txt'
-        if url_file.exists():
-            with open(url_file, 'r') as f:
-                last_url = f.read().strip()
-                print(f"\n {Color.YELLOW}Último backup en línea:{Color.END}")
-                print(f" {Color.GREEN}{last_url}{Color.END}\n")
-    except:
-        pass
-    
-    backup_url = input(f" {Color.GREEN}URL del backup: {Color.END}").strip()
-    
-    if not backup_url:
-        print(f" {Color.RED}✗ URL requerida{Color.END}")
-        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-        return
-    
-    print(f"\n {Color.YELLOW}Descargando backup...{Color.END}")
-    
-    try:
-        import subprocess
-        import json as js
-        import tempfile
-        
-        # Descargar archivo
-        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.json')
-        temp_file.close()
-        
-        result = subprocess.run([
-            'curl', '-s', '-o', temp_file.name, backup_url
-        ], capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            # Leer backup descargado
-            with open(temp_file.name, 'r') as f:
-                backup_data = js.load(f)
-            
-            users = backup_data.get('users', {})
-            
-            print(f" {Color.GREEN}✓ Backup descargado{Color.END}")
-            print(f" {Color.CYAN}Usuarios en backup: {len(users)}{Color.END}")
-            print(f" {Color.CYAN}Fecha: {backup_data.get('timestamp', 'N/A')}{Color.END}")
-            
-            confirm = input(f"\n {Color.YELLOW}¿Restaurar estos usuarios? (s/n): {Color.END}").strip().lower()
-            
-            if confirm == 's':
-                if save_users(users):
-                    print(f"\n {Color.GREEN}✓ Usuarios restaurados correctamente{Color.END}")
-                    moratech.log_action("admin", f"Usuarios restaurados desde: {backup_url}")
-                else:
-                    print(f"\n {Color.RED}✗ Error restaurando usuarios{Color.END}")
-            else:
-                print(f"\n {Color.YELLOW}Restauración cancelada{Color.END}")
-        else:
-            print(f" {Color.RED}✗ Error descargando backup{Color.END}")
-        
-        # Limpiar archivo temporal
-        import os
-        os.unlink(temp_file.name)
-        
-    except Exception as e:
-        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
-        import traceback
-        traceback.print_exc()
-    
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
-def restore_local_m():
-    """Restaurar usuarios desde backup local"""
-    clear_screen()
-    print_banner()
-    print_line()
-    print(f" {Color.CYAN}RESTAURAR USUARIOS LOCALMENTE{Color.END}")
+    print(f" {Color.CYAN}RESTAURAR USUARIOS LOCALMENTE (FORMATO TXT){Color.END}")
     print_line()
     
     try:
         backup_dir = CONFIG_DIR / 'backups'
         
         if not backup_dir.exists():
-            print(f"\n {Color.YELLOW}No hay backups locales{Color.END}")
+            print(f"\n {Color.YELLOW}No hay directorio de backups{Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
         
-        backups = sorted(backup_dir.glob('backup_*.json'), reverse=True)
+        # BUSCAMOS ARCHIVOS .txt
+        backups = sorted(backup_dir.glob('backup_*.txt'), reverse=True)
         
         if not backups:
-            print(f"\n {Color.YELLOW}No hay backups locales{Color.END}")
+            print(f"\n {Color.YELLOW}No hay backups .txt disponibles{Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
         
         print(f"\n {Color.YELLOW}Backups disponibles:{Color.END}\n")
         
-        for i, backup in enumerate(backups[:10], 1):  # Mostrar últimos 10
+        for i, backup in enumerate(backups[:10], 1):
             backup_time = datetime.fromtimestamp(backup.stat().st_mtime)
-            
-            # Leer info del backup
-            try:
-                with open(backup, 'r') as f:
-                    data = json.load(f)
-                    users_count = data.get('users_count', len(data.get('users', {})))
-            except:
-                users_count = '?'
+            # Contar líneas para saber cuántos usuarios hay
+            with open(backup, 'r') as f:
+                count = sum(1 for line in f if line.strip())
             
             print(f" {Color.GREEN}[{i}]{Color.END} {backup.name}")
             print(f"     {Color.CYAN}Fecha: {backup_time.strftime('%d/%m/%Y %H:%M')}{Color.END}")
-            print(f"     {Color.CYAN}Usuarios: {users_count}{Color.END}\n")
+            print(f"     {Color.CYAN}Usuarios: {count}{Color.END}\n")
         
         print_line()
         choice = input(f" {Color.GREEN}Selecciona backup a restaurar (0 = cancelar): {Color.END}").strip()
         
-        try:
-            idx = int(choice) - 1
-            if 0 <= idx < len(backups):
-                selected_backup = backups[idx]
-                
-                # Leer backup
-                with open(selected_backup, 'r') as f:
-                    backup_data = json.load(f)
-                
-                users = backup_data.get('users', {})
-                
-                print(f"\n {Color.CYAN}Backup seleccionado: {selected_backup.name}{Color.END}")
-                print(f" {Color.CYAN}Usuarios: {len(users)}{Color.END}")
-                
-                confirm = input(f"\n {Color.YELLOW}¿Restaurar estos usuarios? (s/n): {Color.END}").strip().lower()
-                
-                if confirm == 's':
-                    if save_users(users):
-                        print(f"\n {Color.GREEN}✓ Usuarios restaurados correctamente{Color.END}")
-                        moratech.log_action("admin", f"Usuarios restaurados desde: {selected_backup.name}")
-                    else:
-                        print(f"\n {Color.RED}✗ Error restaurando usuarios{Color.END}")
+        if choice == '0' or not choice:
+            return
+
+        idx = int(choice) - 1
+        if 0 <= idx < len(backups):
+            selected_backup = backups[idx]
+            
+            # PROCESAR EL ARCHIVO TXT
+            users = {}
+            token_config = load_token_config()
+            
+            with open(selected_backup, 'r') as f:
+                lines = f.readlines()
+
+            for line in lines:
+                line = line.strip()
+                if not line: continue
+                parts = line.split(':')
+
+                # Lógica idéntica a restore_online para mantener consistencia
+                if 'TOKEN' in line and len(parts) >= 5:
+                    token = parts[0]
+                    password = parts[1]
+                    days = int(parts[3])
+                    display_name = parts[4]
+
+                    # Ajuste de días (-1) y Hora (18:00)
+                    real_days = max(0, days - 1)
+                    expire_date = (datetime.now().date() + timedelta(days=real_days))
+                    expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
+
+                    users[token] = {
+                        "password": password,
+                        "role": "user", "type": "token",
+                        "display_name": display_name,
+                        "created": datetime.now().isoformat(),
+                        "expires": expires,
+                        "max_connections": 1,
+                        "enabled": True
+                    }
+                elif len(parts) >= 4:
+                    username = parts[0]
+                    password = parts[1]
+                    max_conn = int(parts[2])
+                    days = int(parts[3])
+
+                    # Ajuste de días (-1) y Hora (18:00)
+                    real_days = max(0, days - 1)
+                    expire_date = (datetime.now().date() + timedelta(days=real_days))
+                    expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
+
+                    users[username] = {
+                        "password": password,
+                        "role": "user", "type": "ssh",
+                        "created": datetime.now().isoformat(),
+                        "expires": expires,
+                        "max_connections": max_conn,
+                        "enabled": True
+                    }
+
+            print(f"\n {Color.CYAN}Usuarios procesados: {len(users)}{Color.END}")
+            confirm = input(f"\n {Color.YELLOW}¿Restaurar ahora? (s/n): {Color.END}").strip().lower()
+            
+            if confirm == 's':
+                if save_users(users):
+                    print(f"\n {Color.GREEN}✓ Restauración local completada{Color.END}")
                 else:
-                    print(f"\n {Color.YELLOW}Restauración cancelada{Color.END}")
-            elif int(choice) == 0:
-                print(f"\n {Color.YELLOW}Operación cancelada{Color.END}")
-            else:
-                print(f"\n {Color.RED}✗ Opción inválida{Color.END}")
-        except ValueError:
-            print(f"\n {Color.RED}✗ Opción inválida{Color.END}")
-        
+                    print(f"\n {Color.RED}✗ Error al guardar usuarios en el sistema{Color.END}")
+        else:
+            print(f"\n {Color.RED}✗ Opción fuera de rango{Color.END}")
+
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
-        import traceback
-        traceback.print_exc()
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
-def list_backups_m():
-    """Listar backups locales"""
+def list_backups_chumo():
+    """Listar backups locales (Formato TXT de Chumo)"""
     clear_screen()
     print_banner()
     print_line()
-    print(f" {Color.CYAN}BACKUPS LOCALES{Color.END}")
+    print(f" {Color.CYAN}LISTA DE BACKUPS LOCALES (.TXT){Color.END}")
     print_line()
     
     try:
@@ -1207,33 +1089,35 @@ def list_backups_m():
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
         
-        backups = sorted(backup_dir.glob('backup_*.json'), reverse=True)
+        # 1) CAMBIO: Buscar archivos .txt en lugar de .json
+        backups = sorted(backup_dir.glob('backup_*.txt'), reverse=True)
         
         if not backups:
-            print(f"\n {Color.YELLOW}No hay backups locales{Color.END}")
+            print(f"\n {Color.YELLOW}No hay backups .txt en el directorio{Color.END}")
         else:
-            print(f"\n {Color.YELLOW}Total de backups: {len(backups)}{Color.END}\n")
+            print(f"\n {Color.YELLOW}Total de backups encontrados: {len(backups)}{Color.END}\n")
             
             for backup in backups:
                 backup_time = datetime.fromtimestamp(backup.stat().st_mtime)
                 size = backup.stat().st_size / 1024  # KB
                 
-                # Leer info del backup
+                # 2) CAMBIO: Como es TXT, contamos las líneas para saber los usuarios
                 try:
                     with open(backup, 'r') as f:
-                        data = json.load(f)
-                        users_count = data.get('users_count', len(data.get('users', {})))
+                        # Contamos solo líneas que no estén vacías
+                        users_count = sum(1 for line in f if line.strip())
                 except:
                     users_count = '?'
                 
                 print(f" {Color.GREEN}{backup.name}{Color.END}")
-                print(f" {Color.CYAN}Fecha: {backup_time.strftime('%d/%m/%Y %H:%M')}{Color.END}  |  {Color.CYAN}Usuarios: {users_count}{Color.END}  |  {Color.CYAN}Tamaño: {size:.1f} KB{Color.END}\n")
+                print(f" {Color.CYAN}Fecha: {backup_time.strftime('%d/%m/%Y %H:%M')}{Color.END}  |  "
+                      f"{Color.CYAN}Usuarios: {users_count}{Color.END}  |  "
+                      f"{Color.CYAN}Tamaño: {size:.1f} KB{Color.END}\n")
         
     except Exception as e:
-        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        print(f"\n {Color.RED}✗ Error al listar: {e}{Color.END}")
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
 #menu del checkuser
 
 def menu_checkuser():
