@@ -95,17 +95,26 @@ def get_system_info():
 def get_active_ports():
     """Obtiene puertos activos - DETECCIÓN AUTOMÁTICA - Solo muestra activos"""
     ports = {}
+    port_counter = {}  # Contador para nombres duplicados
     
     try:
         result = subprocess.run(['ss', '-tulpn'], capture_output=True, text=True)
         output = result.stdout
         import re
         
+        # Función auxiliar para agregar puertos
+        def add_port(name, port_num):
+            if name not in port_counter:
+                port_counter[name] = 0
+            port_counter[name] += 1
+            key = f"{name}_{port_counter[name]}"
+            ports[key] = (name, port_num)
+        
         # Detectar SSH
         if ':22 ' in output or ':22\n' in output:
-            ports['SSH'] = '22 ✓'
+            add_port('SSH', '22')
         
-        # Detectar SSL/Stunnel - MÚLTIPLES PUERTOS
+        # Detectar SSL/Stunnel
         stunnel_check = subprocess.run(['pgrep', '-f', 'stunnel'], capture_output=True, text=True)
         if stunnel_check.stdout.strip():
             ssl_ports = []
@@ -114,10 +123,10 @@ def get_active_ports():
                     match = re.search(r':(\d+)\s', line)
                     if match:
                         ssl_ports.append(match.group(1))
-            if ssl_ports:
-                ports['SSL'] = f"{', '.join(set(ssl_ports))} ✓"
+            for port in sorted(set(ssl_ports)):
+                add_port('SSL', port)
         
-        # Detectar Proxy Python - MÚLTIPLES PUERTOS
+        # Detectar Proxy Python
         proxy_check = subprocess.run(['pgrep', '-f', 'proxy.py'], capture_output=True, text=True)
         if proxy_check.stdout.strip():
             proxy_ports = []
@@ -126,10 +135,10 @@ def get_active_ports():
                     match = re.search(r':(\d+)\s', line)
                     if match and match.group(1) != '22':
                         proxy_ports.append(match.group(1))
-            if proxy_ports:
-                ports['Proxy'] = f"{', '.join(set(proxy_ports))} ✓"
+            for port in sorted(set(proxy_ports)):
+                add_port('Proxy', port)
         
-        # Detectar BadVPN - MÚLTIPLES PUERTOS
+        # Detectar BadVPN
         badvpn_check = subprocess.run(['pgrep', '-f', 'badvpn-udpgw'], capture_output=True, text=True)
         if badvpn_check.stdout.strip():
             badvpn_ports = []
@@ -138,39 +147,33 @@ def get_active_ports():
                     match = re.search(r'127\.0\.0\.1:(\d+)', line)
                     if match:
                         badvpn_ports.append(match.group(1))
-            if badvpn_ports:
-                ports['BadVPN'] = f"{', '.join(set(badvpn_ports))} ✓"
+            for port in sorted(set(badvpn_ports)):
+                add_port('BadVPN', port)
         
-        # Detectar V2Ray/3X-UI - TODOS LOS PUERTOS
+        # Detectar V2Ray/3X-UI
         v2ray_check = subprocess.run(['systemctl', 'is-active', 'x-ui'], capture_output=True, text=True)
         if 'active' in v2ray_check.stdout:
             v2ray_ports = []
-            
-            # Buscar todos los puertos de xray/x-ui
             for line in output.split('\n'):
                 if 'xray' in line.lower() or 'x-ui' in line.lower():
                     match = re.search(r':(\d+)\s', line)
                     if match:
                         v2ray_ports.append(match.group(1))
             
-            # También revisar procesos de xray directamente
             xray_ps = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
             for ps_line in xray_ps.stdout.split('\n'):
                 if 'xray' in ps_line.lower():
-                    # Buscar patrones de puerto en los argumentos
                     port_matches = re.findall(r':(\d{4,5})', ps_line)
                     for port in port_matches:
-                        if port not in ['127.0', '0.0.0']:  # Filtrar IPs
+                        if port not in ['127.0', '0.0.0']:
                             v2ray_ports.append(port)
             
-            if v2ray_ports:
-                # Eliminar duplicados y ordenar
-                v2ray_ports = sorted(list(set(v2ray_ports)))
-                ports['V2Ray'] = f"{', '.join(v2ray_ports)} ✓"
+            for port in sorted(set(v2ray_ports)):
+                add_port('V2Ray', port)
         
         # Detectar SlowDNS
         if ':5300 ' in output or ':5300\n' in output:
-            ports['SlowDNS'] = '5300 ✓'
+            add_port('SlowDNS', '5300')
             
     except Exception:
         pass
@@ -302,18 +305,8 @@ def show_dashboard():
     
     # Puertos en formato de 2 columnas - SOLO ACTIVOS
     if ports:
-        port_list = list(ports.items())
-        for i in range(0, len(port_list), 2):
-            left = port_list[i]
-            right = port_list[i+1] if i+1 < len(port_list) else ("", "")
-            
-            left_status = f"{Color.GREEN}{left[1]}{Color.END}"
-            right_status = f"{Color.GREEN}{right[1]}{Color.END}" if right[1] else ""
-            
-            left_text = f" {Color.CYAN}∘{Color.END} {left[0]}: {left_status}"
-            right_text = f"{Color.CYAN}∘{Color.END} {right[0]}: {right_status}" if right[0] else ""
-            
-            print(f"{left_text:<45} {right_text}")
+        for key, (name, port) in ports.items():
+            print(f" {Color.CYAN}∘{Color.END} {name}: {Color.GREEN}{port}{Color.END}")
     else:
         print(f" {Color.YELLOW}No hay protocolos activos{Color.END}")
     
