@@ -1299,11 +1299,32 @@ def start_checkuser_server():
             
             if result.returncode != 0:
                 print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
-                subprocess.run(pip_cmd.split() + ['install', 'flask', '--break-system-packages'], 
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
+                
+                # Intentar con python3 -m pip primero
+                install_result = subprocess.run(
+                    ['python3', '-m', 'pip', 'install', 'flask', '--break-system-packages'],
+                    capture_output=True, text=True
+                )
+                
+                if install_result.returncode != 0:
+                    # Fallback a pip normal
+                    subprocess.run(pip_cmd.split() + ['install', 'flask', '--break-system-packages'], 
+                                capture_output=True, text=True)
+                
+                # Verificar instalación
+                check_flask = subprocess.run(['python3', '-c', 'import flask'], 
+                                            capture_output=True, text=True)
+                
+                if check_flask.returncode == 0:
+                    print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
+                else:
+                    print(f" {Color.RED}✗ Flask no se pudo instalar correctamente{Color.END}")
+                    print(f" {Color.YELLOW}Intenta manualmente: python3 -m pip install flask --break-system-packages{Color.END}")
+                    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+                    return
             else:
                 print(f" {Color.GREEN}✓ Flask ya instalado{Color.END}")
+
         except Exception as e:
             print(f" {Color.RED}✗ Error verificando Flask: {e}{Color.END}")
         
