@@ -570,7 +570,7 @@ def save_token_config(config):
     with open(TOKEN_CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=4)
 
-# sistema de backups
+# sistema de backups regular
 
 def menu_backup():
     """Menú de backup de usuarios"""
@@ -622,6 +622,274 @@ def menu_backup():
             break
 
 def backup_online():
+    """Respaldar usuarios en línea (formato texto compatible)"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}RESPALDAR USUARIOS EN LÍNEA{Color.END}")
+    print_line()
+    
+    print(f"\n {Color.YELLOW}Creando backup...{Color.END}")
+    
+    try:
+        # Crear directorio de backups
+        backup_dir = CONFIG_DIR / 'backups'
+        backup_dir.mkdir(exist_ok=True)
+        
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        backup_filename = f'backup_{timestamp}.txt'
+        backup_path = backup_dir / backup_filename
+        
+        # Leer usuarios actuales
+        users = load_users()
+        
+        # Convertir a formato texto
+        backup_lines = []
+        for username, data in users.items():
+            user_type = data.get('type', 'ssh')
+            password = data.get('password', '')
+            max_conn = data.get('max_connections', 1)
+            
+            if user_type == 'token':
+                # Formato TOKEN: {token}:{contraseña_token}:TOKEN:{dias}:{nombre_visual}
+                display_name = data.get('display_name', username)
+                
+                # Calcular días restantes
+                expires = data.get('expires')
+                if expires:
+                    expire_date = datetime.fromisoformat(expires)
+                    days = max(0, (expire_date - datetime.now()).days)
+                else:
+                    days = 0
+                
+                line = f"{username}:{password}:TOKEN:{days}:{display_name}"
+            else:
+                # Formato SSH: {nombre}:{contraseña}:{max_conexiones}:{dias}
+                expires = data.get('expires')
+                if expires:
+                    expire_date = datetime.fromisoformat(expires)
+                    days = max(0, (expire_date - datetime.now()).days)
+                else:
+                    days = 0
+                
+                line = f"{username}:{password}:{max_conn}:{days}"
+            
+            backup_lines.append(line)
+        
+        # Guardar en archivo
+        with open(backup_path, 'w') as f:
+            f.write('\n'.join(backup_lines))
+        
+        print(f" {Color.GREEN}✓ Backup creado: {backup_filename}{Color.END}")
+        print(f" {Color.CYAN}Total usuarios: {len(users)}{Color.END}")
+        
+        # Obtener IP del servidor
+        import subprocess
+        try:
+            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                                     capture_output=True, text=True, timeout=3)
+            server_ip = ip_result.stdout.strip()
+        except:
+            server_ip = "TU_IP"
+        
+        # Configurar servidor HTTP
+        print(f"\n {Color.YELLOW}Configurando servidor HTTP...{Color.END}")
+        
+        port = input(f" {Color.GREEN}Puerto para servidor HTTP (default: 8000): {Color.END}").strip()
+        if not port:
+            port = "8000"
+        
+        # Verificar si ya hay servidor corriendo
+        check_server = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+        if 'moratech_backup' in check_server.stdout:
+            subprocess.run(['screen', '-S', 'moratech_backup', '-X', 'quit'], stderr=subprocess.DEVNULL)
+            import time
+            time.sleep(1)
+        
+        # Iniciar servidor HTTP en background
+        subprocess.run([
+            'screen', '-dmS', 'moratech_backup',
+            'python3', '-m', 'http.server', port,
+            '--directory', str(backup_dir)
+        ])
+        
+        # Abrir puerto en firewall
+        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        
+        backup_url = f"http://{server_ip}:{port}/{backup_filename}"
+        
+        print(f"\n {Color.GREEN}✓ Servidor HTTP iniciado en puerto {port}{Color.END}")
+        print(f"\n {Color.CYAN}URL del backup:{Color.END}")
+        print(f" {Color.GREEN}{backup_url}{Color.END}")
+        
+        # Guardar URL del backup
+        url_file = CONFIG_DIR / 'last_backup_url.txt'
+        with open(url_file, 'w') as f:
+            f.write(f"{backup_url}\n")
+        
+        print(f"\n {Color.YELLOW}Nota: El servidor HTTP quedará activo.{Color.END}")
+        print(f" {Color.YELLOW}Para detenerlo: screen -S moratech_backup -X quit{Color.END}")
+        
+        moratech.log_action("admin", f"Backup en línea creado: {backup_url}")
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        import traceback
+        traceback.print_exc()
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+# sistema de backups compatible con chumo
+
+def restore_online():
+    """Restaurar usuarios desde servidor HTTP (formato texto)"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}RESTAURAR USUARIOS EN LÍNEA{Color.END}")
+    print_line()
+    
+    # Mostrar última URL guardada
+    try:
+        url_file = CONFIG_DIR / 'last_backup_url.txt'
+        if url_file.exists():
+            with open(url_file, 'r') as f:
+                last_url = f.read().strip()
+                print(f"\n {Color.YELLOW}Último backup en línea:{Color.END}")
+                print(f" {Color.GREEN}{last_url}{Color.END}\n")
+    except:
+        pass
+    
+    backup_url = input(f" {Color.GREEN}URL del backup: {Color.END}").strip()
+    
+    if not backup_url:
+        print(f" {Color.RED}✗ URL requerida{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    print(f"\n {Color.YELLOW}Descargando backup...{Color.END}")
+    
+    try:
+        import subprocess
+        import tempfile
+        
+        # Descargar archivo
+        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt')
+        temp_file.close()
+        
+        result = subprocess.run([
+            'curl', '-s', '-o', temp_file.name, backup_url
+        ], capture_output=True, text=True)
+        
+        if result.returncode == 0:
+            # Leer backup descargado
+            with open(temp_file.name, 'r') as f:
+                backup_content = f.read().strip()
+            
+            if not backup_content:
+                print(f" {Color.RED}✗ Backup vacío o inválido{Color.END}")
+                import os
+                os.unlink(temp_file.name)
+                input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+                return
+            
+            # Parsear backup
+            users = {}
+            token_config = load_token_config()
+            
+            for line in backup_content.split('\n'):
+                if not line.strip():
+                    continue
+                
+                parts = line.split(':')
+                
+                if 'TOKEN' in line:
+                    # Formato TOKEN: {token}:{contraseña}:TOKEN:{dias}:{nombre_visual}
+                    if len(parts) >= 5:
+                        token = parts[0]
+                        password = parts[1]
+                        days = int(parts[3])
+                        display_name = parts[4]
+                        
+                        # Guardar contraseña token si es la primera
+                        if not token_config.get('token_password'):
+                            token_config['token_password'] = password
+                            save_token_config(token_config)
+                        
+                        expires = (datetime.now() + timedelta(days=days)).isoformat() if days > 0 else None
+                        
+                        users[token] = {
+                            "password": token_config['token_password'],
+                            "role": "user",
+                            "type": "token",
+                            "display_name": display_name,
+                            "created": datetime.now().isoformat(),
+                            "expires": expires,
+                            "max_connections": 1,
+                            "enabled": True,
+                            "original_token": token
+                        }
+                else:
+                    # Formato SSH: {nombre}:{contraseña}:{max_conexiones}:{dias}
+                    if len(parts) >= 4:
+                        username = parts[0]
+                        password = parts[1]
+                        max_conn = int(parts[2])
+                        days = int(parts[3])
+                        
+                        expires = (datetime.now() + timedelta(days=days)).isoformat() if days > 0 else None
+                        
+                        users[username] = {
+                            "password": password,
+                            "role": "user",
+                            "type": "ssh",
+                            "created": datetime.now().isoformat(),
+                            "expires": expires,
+                            "max_connections": max_conn,
+                            "enabled": True
+                        }
+            
+            print(f" {Color.GREEN}✓ Backup descargado{Color.END}")
+            print(f" {Color.CYAN}Usuarios en backup: {len(users)}{Color.END}")
+            
+            # Mostrar preview
+            print(f"\n {Color.YELLOW}Preview de usuarios:{Color.END}")
+            for i, (username, data) in enumerate(list(users.items())[:5], 1):
+                user_type = data.get('type', 'ssh')
+                if user_type == 'token':
+                    display = f"{data.get('display_name')} ({username[:8]}...)"
+                else:
+                    display = username
+                print(f" {i}. {display} ({user_type})")
+            
+            if len(users) > 5:
+                print(f" ... y {len(users) - 5} más")
+            
+            confirm = input(f"\n {Color.YELLOW}¿Restaurar estos usuarios? (s/n): {Color.END}").strip().lower()
+            
+            if confirm == 's':
+                if save_users(users):
+                    print(f"\n {Color.GREEN}✓ Usuarios restaurados correctamente{Color.END}")
+                    moratech.log_action("admin", f"Usuarios restaurados desde: {backup_url}")
+                else:
+                    print(f"\n {Color.RED}✗ Error restaurando usuarios{Color.END}")
+            else:
+                print(f"\n {Color.YELLOW}Restauración cancelada{Color.END}")
+        else:
+            print(f" {Color.RED}✗ Error descargando backup{Color.END}")
+        
+        # Limpiar archivo temporal
+        import os
+        os.unlink(temp_file.name)
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        import traceback
+        traceback.print_exc()
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+def backup_online_m():
     """Respaldar usuarios en línea (servidor HTTP)"""
     clear_screen()
     print_banner()
@@ -706,8 +974,7 @@ def backup_online():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
-
-def restore_online():
+def restore_online_m():
     """Restaurar usuarios desde servidor HTTP"""
     clear_screen()
     print_banner()
@@ -783,7 +1050,7 @@ def restore_online():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
-def restore_local():
+def restore_local_m():
     """Restaurar usuarios desde backup local"""
     clear_screen()
     print_banner()
@@ -864,7 +1131,7 @@ def restore_local():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
-def list_backups():
+def list_backups_m():
     """Listar backups locales"""
     clear_screen()
     print_banner()
