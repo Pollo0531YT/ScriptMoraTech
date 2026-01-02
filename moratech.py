@@ -36,13 +36,13 @@ CONNECTIONS_FILE = CONFIG_DIR / 'connections.json'
 PROTOCOLS_FILE = CONFIG_DIR / 'protocols.json'
 
 def clear_screen():
-    common.clear_screen
+    common.clear_screen()
 
 def print_line():
-    common.print_line
+    common.print_line()
 
 def print_banner():
-    common.print_banner
+    common.print_banner()
 
 def get_system_info():
     """Obtiene información del sistema"""
