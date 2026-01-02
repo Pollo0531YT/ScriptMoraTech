@@ -536,66 +536,80 @@ def load_users():
 def save_users(users):
     """Guarda usuarios y sincroniza con el sistema Linux - transaccional"""
     import tempfile
-    
+    import os
+    import shutil
+
     try:
-        # 1. Primero sincronizar con el sistema (si falla, no guardamos JSON)
-        result = subprocess.run(['cut', '-d:', '-f1', '/etc/passwd'], capture_output=True, text=True)
-        system_users = result.stdout.strip().split('\n')
-        
-        # Crear/actualizar usuarios que están en JSON
+        # 0) Obtener la lista de usuarios del sistema
+        result = subprocess.run(['cut', '-d:', '-f1', '/etc/passwd'],
+                                capture_output=True, text=True)
+        system_users = result.stdout.strip().split('\n') if result.returncode == 0 else []
+
+        # 0.5) Cargar el JSON existente para saber qué usuarios gestionaba antes el sistema
+        previous_users = []
+        try:
+            if USERS_FILE.exists():
+                with open(USERS_FILE, 'r') as f:
+                    prev = json.load(f)
+                    previous_users = list(prev.keys())
+        except Exception:
+            previous_users = []
+
+        # 1) Crear/actualizar usuarios que están en JSON (si no existen en el sistema, crearlos)
         for username, data in users.items():
             # Si el usuario no existe en el sistema, crearlo
             if username not in system_users:
-                result = subprocess.run(['useradd', '-M', '-s', '/bin/false', username], 
-                                      capture_output=True, text=True)
+                result = subprocess.run(['useradd', '-M', '-s', '/bin/false', username],
+                                        capture_output=True, text=True)
                 if result.returncode != 0:
-                    raise Exception(f"Error creando usuario {username}: {result.stderr}")
-            
-            # Actualizar contraseña
+                    raise Exception(f"Error creando usuario {username}: {result.stderr.strip()}")
+
+            # Actualizar contraseña (usa chpasswd con input de texto)
             password = str(data.get('password', ''))
-            result = subprocess.run(['chpasswd'], 
-                                  input=f"{username}:{password}\n".encode('utf-8'),
-                                  capture_output=True)
+            result = subprocess.run(['chpasswd'],
+                                    input=f"{username}:{password}\n",
+                                    capture_output=True, text=True)
             if result.returncode != 0:
-                raise Exception(f"Error actualizando contraseña de {username}: {result.stderr}")
-        
-        # Eliminar usuarios del sistema que ya no están en JSON
-        moratech_users = list(users.keys())
+                raise Exception(f"Error actualizando contraseña de {username}: {result.stderr.strip()}")
+
+        # 2) Eliminar usuarios del sistema que ya no están en el JSON pero sí estaban en el JSON anterior
+        #    (o que tengan cierta convención como token_ si quieres mantener esa regla)
         for sys_user in system_users:
-            if sys_user.startswith('token_') or sys_user in moratech_users:
-                if sys_user not in moratech_users:
-                    result = subprocess.run(['userdel', '-f', sys_user], 
-                                          capture_output=True, text=True)
-                    if result.returncode != 0:
-                        raise Exception(f"Error eliminando usuario {sys_user}: {result.stderr}")
-        
-        # 2. Si todo salió bien, guardar JSON
-        # Primero guardar en archivo temporal
-        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, dir=CONFIG_DIR)
+            # Sólo consideramos borrar si:
+            #  - el usuario estaba en el JSON anterior (lo gestionaba el script), y ahora no está,
+            #  - OR el usuario comienza por 'token_' y no está en la nueva lista (opcional).
+            should_consider = (sys_user in previous_users) or sys_user.startswith('token_')
+            if should_consider and sys_user not in users:
+                # Primero desconectar procesos del usuario
+                subprocess.run(['pkill', '-u', sys_user], stderr=subprocess.DEVNULL)
+                # Luego eliminar la cuenta (forzar, y borrar home si existe)
+                result = subprocess.run(['userdel', '-f', '-r', sys_user],
+                                        capture_output=True, text=True)
+                if result.returncode != 0:
+                    # No abortamos todo por esto, pero lo reportamos
+                    raise Exception(f"Error eliminando usuario {sys_user}: {result.stderr.strip()}")
+
+        # 3) Si todo salió bien, guardar JSON de forma atómica
+        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, dir=CONFIG_DIR, suffix='.tmp')
         json.dump(users, temp_file, indent=4)
         temp_file.close()
-        
-        # Luego mover atómicamente (esto previene corrupción)
-        import shutil
         shutil.move(temp_file.name, USERS_FILE)
-        
+
         return True
-        
+
     except Exception as e:
         print(f"\n {Color.RED}✗ Error sincronizando usuarios con el sistema:{Color.END}")
         print(f" {Color.RED}{str(e)}{Color.END}")
         print(f" {Color.YELLOW}Los cambios NO fueron guardados{Color.END}")
-        
         # Limpiar archivo temporal si existe
         try:
-            import os
-            if 'temp_file' in locals():
+            if 'temp_file' in locals() and os.path.exists(temp_file.name):
                 os.unlink(temp_file.name)
-        except:
+        except Exception:
             pass
-        
         return False
-    
+
+  
 def load_token_config():
     """Carga config de tokens"""
     with open(TOKEN_CONFIG_FILE, 'r') as f:
