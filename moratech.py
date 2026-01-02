@@ -13,7 +13,7 @@ import socket
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from modules import common, users, ssl, phyton, badvpn, v2ray
+from modules import common, extras, users, ssl, phyton, badvpn, v2ray
 
 # Colores para terminal
 class Color:
@@ -293,7 +293,7 @@ def protocols_menu():
         print_line()
 
         print(f"{Color.GREEN}5.{Color.END} ➮ BadVPN")
-        print(f"{Color.GREEN}5.{Color.END} ➮ EXTRAS (desarrollo...)")
+        print(f"{Color.GREEN}6.{Color.END} ➮ EXTRAS")
         
 
         print_line()
@@ -308,6 +308,8 @@ def protocols_menu():
             v2ray.menu_v2ray()
         elif choice == '5':
             badvpn.menu_badvpn() 
+        elif choice == '6':
+            extras.menu_extras()
         elif choice == '0':
             break
         else:
