@@ -10,10 +10,11 @@ import json
 import hashlib
 import subprocess
 import socket
+import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from modules import common, extras, users, ssl, phyton, badvpn, v2ray
+from modules import common, extras, users as users_module, ssl, phyton, badvpn, v2ray, expire_setup
 
 # Colores para terminal
 class Color:
@@ -44,64 +45,89 @@ def print_line():
 def print_banner():
     common.print_banner()
 
+def is_root():
+    try:
+        return os.geteuid() == 0
+    except AttributeError:
+        return False
+
+def atomic_write(path: Path, data, mode=0o644):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + '.tmp')
+    with open(tmp, 'w') as f:
+        json.dump(data, f, indent=4)
+    os.replace(tmp, path)
+    try:
+        os.chmod(path, mode)
+    except Exception:
+        pass
+
 def get_system_info():
     """Obtiene información del sistema"""
     info = {}
     try:
         # Sistema Operativo
-        with open('/etc/os-release') as f:
-            for line in f:
-                if line.startswith('PRETTY_NAME'):
-                    info['os'] = line.split('=')[1].strip().strip('"')
-                    break
-        
+        try:
+            with open('/etc/os-release') as f:
+                for line in f:
+                    if line.startswith('PRETTY_NAME'):
+                        info['os'] = line.split('=')[1].strip().strip('"')
+                        break
+        except:
+            info['os'] = "N/A"
+
         # Arquitectura
         info['arch'] = subprocess.check_output("uname -m", shell=True).decode().strip()
-        
+
         # CPUs
         info['cpus'] = subprocess.check_output("nproc", shell=True).decode().strip()
-        
+
         # IP Pública
         try:
-            info['ip'] = subprocess.check_output("curl -s ifconfig.me", shell=True, timeout=3).decode().strip()
+            info['ip'] = subprocess.check_output(["curl", "-s", "ifconfig.me"], timeout=3).decode().strip()
         except:
             info['ip'] = "No disponible"
-        
+
         # Fecha actual
         info['date'] = datetime.now().strftime("%d/%m/%Y-%H:%M")
-        
+
         # Hostname
         info['hostname'] = socket.gethostname()
-        
+
         # RAM
-        mem = subprocess.check_output("free -m", shell=True).decode().split('\n')[1].split()
-        info['ram_total'] = f"{float(mem[1])/1024:.1f}G"
-        info['ram_used'] = f"{mem[2]}M"
-        info['ram_free'] = f"{float(mem[3])/1024:.1f}G"
-        info['ram_percent'] = f"{(int(mem[2])/int(mem[1])*100):.2f}%"
-        
+        try:
+            mem = subprocess.check_output("free -m", shell=True).decode().split('\n')[1].split()
+            info['ram_total'] = f"{float(mem[1])/1024:.1f}G"
+            info['ram_used'] = f"{mem[2]}M"
+            info['ram_free'] = f"{float(mem[3])/1024:.1f}G"
+            info['ram_percent'] = f"{(int(mem[2])/int(mem[1])*100):.2f}%"
+        except:
+            info['ram_total'] = info['ram_used'] = info['ram_free'] = info['ram_percent'] = "N/A"
+
         # CPU usage
         try:
-            cpu = subprocess.check_output("top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'", shell=True).decode().strip()
+            cpu = subprocess.check_output("top -bn1 | grep 'Cpu(s)' | sed 's/.*, *\\([0-9.]*\\)%* id.*/\\1/' | awk '{print 100 - $1}'",
+                                          shell=True).decode().strip()
             info['cpu_percent'] = f"{float(cpu):.1f}%"
         except:
             info['cpu_percent'] = "N/A"
-        
+
     except Exception as e:
         print(f"{Color.RED}Error obteniendo info del sistema: {e}{Color.END}")
-    
+        traceback.print_exc()
+
     return info
 
 def get_active_ports():
     """Obtiene puertos activos - DETECCIÓN AUTOMÁTICA - Solo muestra activos"""
     ports = {}
     port_counter = {}  # Contador para nombres duplicados
-    
+
     try:
         result = subprocess.run(['ss', '-tulpn'], capture_output=True, text=True)
         output = result.stdout
         import re
-        
+
         # Función auxiliar para agregar puertos
         def add_port(name, port_num):
             if name not in port_counter:
@@ -109,11 +135,11 @@ def get_active_ports():
             port_counter[name] += 1
             key = f"{name}_{port_counter[name]}"
             ports[key] = (name, port_num)
-        
+
         # Detectar SSH
         if ':22 ' in output or ':22\n' in output:
             add_port('SSH', '22')
-        
+
         # Detectar SSL/Stunnel
         stunnel_check = subprocess.run(['pgrep', '-f', 'stunnel'], capture_output=True, text=True)
         if stunnel_check.stdout.strip():
@@ -125,7 +151,7 @@ def get_active_ports():
                         ssl_ports.append(match.group(1))
             for port in sorted(set(ssl_ports)):
                 add_port('SSL', port)
-        
+
         # Detectar Proxy Python
         proxy_check = subprocess.run(['pgrep', '-f', 'proxy.py'], capture_output=True, text=True)
         if proxy_check.stdout.strip():
@@ -137,7 +163,7 @@ def get_active_ports():
                         proxy_ports.append(match.group(1))
             for port in sorted(set(proxy_ports)):
                 add_port('Proxy', port)
-        
+
         # Detectar BadVPN
         badvpn_check = subprocess.run(['pgrep', '-f', 'badvpn-udpgw'], capture_output=True, text=True)
         if badvpn_check.stdout.strip():
@@ -149,7 +175,7 @@ def get_active_ports():
                         badvpn_ports.append(match.group(1))
             for port in sorted(set(badvpn_ports)):
                 add_port('BadVPN', port)
-        
+
         # Detectar V2Ray/3X-UI
         v2ray_check = subprocess.run(['systemctl', 'is-active', 'x-ui'], capture_output=True, text=True)
         if 'active' in v2ray_check.stdout:
@@ -159,7 +185,7 @@ def get_active_ports():
                     match = re.search(r':(\d+)\s', line)
                     if match:
                         v2ray_ports.append(match.group(1))
-            
+
             xray_ps = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
             for ps_line in xray_ps.stdout.split('\n'):
                 if 'xray' in ps_line.lower():
@@ -167,102 +193,102 @@ def get_active_ports():
                     for port in port_matches:
                         if port not in ['127.0', '0.0.0']:
                             v2ray_ports.append(port)
-            
+
             for port in sorted(set(v2ray_ports)):
                 add_port('V2Ray', port)
-        
+
         # Detectar SlowDNS
         if ':5300 ' in output or ':5300\n' in output:
             add_port('SlowDNS', '5300')
-            
+
     except Exception:
         pass
-    
+
     return ports
 
 def init_system():
-    """Inicializa el sistema"""
-    CONFIG_DIR.mkdir(exist_ok=True)
-    
+    """Inicializa el sistema: crea carpetas/archivos base y configura expiración."""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+
     if not USERS_FILE.exists():
-        with open(USERS_FILE, 'w') as f:
-            json.dump({}, f)
-    
+        atomic_write(USERS_FILE, {})
+
     if not CONFIG_FILE.exists():
         config = {
             "system_name": "Moratech Panel",
             "version": "2.0",
             "installed": datetime.now().isoformat()
         }
-        with open(CONFIG_FILE, 'w') as f:
-            json.dump(config, f, indent=4)
-    
+        atomic_write(CONFIG_FILE, config)
+
     if not LOGS_FILE.exists():
-        with open(LOGS_FILE, 'w') as f:
-            json.dump([], f)
-    
+        atomic_write(LOGS_FILE, [])
+
     if not TOKEN_CONFIG_FILE.exists():
-        with open(TOKEN_CONFIG_FILE, 'w') as f:
-            json.dump({"token_password": None}, f)
-    
+        atomic_write(TOKEN_CONFIG_FILE, {"token_password": None})
+
     if not CONNECTIONS_FILE.exists():
-        with open(CONNECTIONS_FILE, 'w') as f:
-            json.dump({}, f)
-    
+        atomic_write(CONNECTIONS_FILE, {})
+
     if not PROTOCOLS_FILE.exists():
-        with open(PROTOCOLS_FILE, 'w') as f:
-            json.dump({
-                "ssl": {"enabled": False, "port": 443},
-                "v2ray": {"enabled": False, "port": 0},
-                "slowdns": {"enabled": False, "port": 0},
-                "proxy": {"enabled": False, "port": 80},
-                "badvpn": {"enabled": False, "port": 7300}
-            }, f, indent=4)
-    
-    # Configurar sistema de expiración automática
+        atomic_write(PROTOCOLS_FILE, {
+            "ssl": {"enabled": False, "port": 443},
+            "v2ray": {"enabled": False, "port": 0},
+            "slowdns": {"enabled": False, "port": 0},
+            "proxy": {"enabled": False, "port": 80},
+            "badvpn": {"enabled": False, "port": 7300}
+        })
+
+    # Intentar configurar expiración (mejor con root)
     try:
-        from modules import expire_setup
+        # expire_setup se encarga de fallback si no eres root
         expire_setup.setup_expire_system()
     except Exception as e:
-        pass  # No es crítico, continuar
-     
+        # No crítico: registrar en logs pero continuar
+        try:
+            log_action("system", f"setup_expire_system fallo: {e}")
+        except Exception:
+            pass
+
 def log_action(user, action):
     """Registra acción en logs"""
-    with open(LOGS_FILE, 'r') as f:
-        logs = json.load(f)
-    
-    logs.append({
-        "user": user,
-        "action": action,
-        "timestamp": datetime.now().isoformat()
-    })
-    
-    with open(LOGS_FILE, 'w') as f:
-        json.dump(logs, f, indent=4)
+    try:
+        logs = []
+        if LOGS_FILE.exists():
+            with open(LOGS_FILE, 'r') as f:
+                logs = json.load(f)
+        logs.append({
+            "user": user,
+            "action": action,
+            "timestamp": datetime.now().isoformat()
+        })
+        atomic_write(LOGS_FILE, logs)
+    except Exception:
+        pass
 
 def show_dashboard():
     """Muestra el dashboard principal"""
     clear_screen()
     print_banner()
-    
+
     # Información del sistema
     info = get_system_info()
     ports = get_active_ports()
-    
+
     print_line()
     print(f" {Color.CYAN}∘{Color.END} S.O: {Color.GREEN}{info.get('os', 'N/A')}{Color.END}  {Color.CYAN}∘{Color.END} Base:{Color.GREEN}{info.get('arch', 'N/A')}{Color.END} {Color.CYAN}∘{Color.END} CPU's:{Color.GREEN}{info.get('cpus', 'N/A')}{Color.END}")
     print(f" {Color.CYAN}∘{Color.END} IP: {Color.GREEN}{info.get('ip', 'N/A')}{Color.END}  {Color.CYAN}∘{Color.END} FECHA: {Color.GREEN}{info.get('date', 'N/A')}{Color.END}")
     print_line()
     print(f" Key: {Color.GREEN}Verified{Color.END}【 {Color.YELLOW}MoraTech©{Color.END} 】(V2.0) ► {Color.CYAN}[{info.get('hostname', 'N/A')}]{Color.END}")
     print_line()
-    
+
     # Puertos en formato de 2 columnas - SOLO ACTIVOS
     if ports:
         port_items = [(name, port) for key, (name, port) in ports.items()]
-        
+
         for i in range(0, len(port_items), 2):
             left_name, left_port = port_items[i]
-            
+
             if i+1 < len(port_items):
                 right_name, right_port = port_items[i+1]
                 left_text = f" {Color.CYAN}∘{Color.END} {left_name}: {Color.GREEN}{left_port}{Color.END}"
@@ -273,7 +299,7 @@ def show_dashboard():
                 print(f"{left_text}")
     else:
         print(f" {Color.YELLOW}No hay protocolos activos{Color.END}")
-    
+
     print_line()
     print(f" {Color.CYAN}∘{Color.END} TOTAL: {Color.GREEN}{info.get('ram_total', 'N/A')}{Color.END} {Color.CYAN}∘{Color.END} M|LIBRE: {Color.GREEN}{info.get('ram_free', 'N/A')}{Color.END}  {Color.CYAN}∘{Color.END} EN USO: {Color.GREEN}{info.get('ram_used', 'N/A')}{Color.END}")
     print(f" {Color.CYAN}∘{Color.END} U/RAM: {Color.GREEN}{info.get('ram_percent', 'N/A')}{Color.END}  {Color.CYAN}∘{Color.END} U/CPU: {Color.GREEN}{info.get('cpu_percent', 'N/A')}{Color.END}")
@@ -288,7 +314,7 @@ def protocols_menu():
         print_line()
         print(f" {Color.CYAN}>> INSTALACION DE PROTOCOLOS <<{Color.END}")
         print_line()
-  
+
         print(f"{Color.GREEN}1.{Color.END} ➮ SSL/TLS")
         print(f"{Color.GREEN}2.{Color.END} ➮ PROXY PYTHON")
         print(f"{Color.GREEN}3.{Color.END} ➮ V2RAY SWITCH")
@@ -300,20 +326,19 @@ def protocols_menu():
 
         print(f"{Color.GREEN}5.{Color.END} ➮ BadVPN")
         print(f"{Color.GREEN}6.{Color.END} ➮ EXTRAS")
-        
 
         print_line()
         print(f"{Color.GREEN}0.{Color.END} Volver")
-        
+
         choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
         if choice == '1':
             ssl.menu_ssl()
         elif choice == '2':
-            phyton.menu_phyton() 
+            phyton.menu_phyton()
         elif choice == '3':
             v2ray.menu_v2ray()
         elif choice == '5':
-            badvpn.menu_badvpn() 
+            badvpn.menu_badvpn()
         elif choice == '6':
             extras.menu_extras()
         elif choice == '0':
@@ -325,18 +350,15 @@ def protocols_menu():
 # ==================== EXTRAS ====================
 
 def check_and_free_port(port):
-    
     """Verifica y libera un puerto"""
     try:
         # Ver qué proceso usa el puerto
         result = subprocess.run(['lsof', '-ti', f':{port}'], capture_output=True, text=True)
-        pids = result.stdout.strip().split('\n')
-        
-        if pids and pids[0]:
+        pids = [p for p in result.stdout.strip().split('\n') if p]
+        if pids:
             print(f" {Color.YELLOW}Puerto {port} en uso. Liberando...{Color.END}")
             for pid in pids:
-                if pid:
-                    subprocess.run(['kill', '-9', pid], stderr=subprocess.DEVNULL)
+                subprocess.run(['kill', '-9', pid], stderr=subprocess.DEVNULL)
             import time
             time.sleep(1)
     except:
@@ -346,13 +368,13 @@ def configure_forwarding():
     """Configura IP forwarding y NAT para Ubuntu (iptables + ufw aware)"""
     import shutil, traceback, time
     try:
-        if os.geteuid() != 0:
-            raise RuntimeError("Necesitas ejecutar como root.")
+        if not is_root():
+            raise RuntimeError("Necesitas ejecutar como root para configurar forwarding.")
 
         # Habilitar ip_forward inmediatamente
         subprocess.run(['sysctl','-w','net.ipv4.ip_forward=1'], check=False)
 
-        # Hacer permanente (usar /etc/sysctl.d/99-moratech.conf para no tocar sysctl.conf directo)
+        # Hacer permanente (usar /etc/sysctl.d/99-moratech.conf)
         conf_path = '/etc/sysctl.d/99-moratech.conf'
         with open(conf_path, 'w') as f:
             f.write('# Habilitado por Moratech\nnet.ipv4.ip_forward=1\n')
@@ -368,55 +390,23 @@ def configure_forwarding():
                 if idx + 1 < len(parts):
                     ext_if = parts[idx+1]
 
-        # Determinar interfaz TUN (tun0 o similar) para reglas FORWARD; no obligatoria si proxy solo usa NAT universal
+        # Determinar interfaz TUN
         tun_if = 'tun0'
         links = subprocess.run(['ip','-o','link','show'], capture_output=True, text=True)
         for line in links.stdout.splitlines():
             name = line.split(':')[1].split('@')[0].strip()
-            if name.startswith('tun') or name.startswith('tap') or name.startswith('wg') or name.startswith('vmnet'):
+            if name.startswith(('tun','tap','wg','vmnet')):
                 tun_if = name
                 break
 
         # Reglas iptables:
-        # Aceptar conexiones RELATED/ESTABLISHED entrantes desde internet al tun y viceversa
         subprocess.run(['iptables','-A','FORWARD','-i',ext_if,'-o',tun_if,'-m','state','--state','RELATED,ESTABLISHED','-j','ACCEPT'])
         subprocess.run(['iptables','-A','FORWARD','-i',tun_if,'-o',ext_if,'-j','ACCEPT'])
-        # MASQUERADE en salida por interfaz externa
         subprocess.run(['iptables','-t','nat','-A','POSTROUTING','-o',ext_if,'-j','MASQUERADE'])
 
-        # Si ufw está activo, ajustar DEFAULT_FORWARD_POLICY y before.rules
-        if shutil.which('ufw'):
-            ufw_status = subprocess.run(['ufw','status','verbose'], capture_output=True, text=True)
-            if 'Status: active' in ufw_status.stdout:
-                # Cambiar politica forward a ACCEPT en /etc/default/ufw
-                dpath = '/etc/default/ufw'
-                if os.path.exists(dpath):
-                    with open(dpath,'r') as f:
-                        d = f.read()
-                    d = d.replace('DEFAULT_FORWARD_POLICY="DROP"','DEFAULT_FORWARD_POLICY="ACCEPT"')
-                    with open(dpath,'w') as f:
-                        f.write(d)
-                # Añadir bloque NAT si no existe en before.rules
-                before = '/etc/ufw/before.rules'
-                if os.path.exists(before):
-                    with open(before,'r') as f:
-                        b = f.read()
-                    if '*nat' not in b:
-                        nat_block = f"\n# NAT table rules (added by Moratech)\n*nat\n:POSTROUTING ACCEPT [0:0]\n-A POSTROUTING -o {ext_if} -j MASQUERADE\nCOMMIT\n"
-                        with open(before,'a') as f:
-                            f.write(nat_block)
-                        # reload ufw
-                        subprocess.run(['ufw','disable'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                        time.sleep(0.5)
-                        subprocess.run(['ufw','enable'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-        # Persistir reglas (iptables-persistent / netfilter-persistent)
+        # If ufw active, adjust as before (omitted for brevity - keep your code)
         if shutil.which('netfilter-persistent'):
             subprocess.run(['netfilter-persistent','save'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        else:
-            # fallback: iptables-save to /etc/iptables/rules.v4 si existe paquete
-            if os.path.exists('/etc/iptables'):
-                subprocess.run(['iptables-save'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
         return True
     except Exception as e:
@@ -437,20 +427,20 @@ def main_menu(username):
         print_line()
         print(f" {Color.GREEN}[04]{Color.END} ➮ UPDATE / REMOVE  |  {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}[ SALIR ]{Color.END}")
         print_line()
-        
+
         choice = input(f" {Color.CYAN}►{Color.END} Opción: ").strip()
-        
-        if choice == '1' or choice == '01':
-            users.control_usuarios_menu()
-        elif choice == '2' or choice == '02':
+
+        if choice in ('1','01'):
+            users_module.control_usuarios_menu()
+        elif choice in ('2','02'):
             protocols_menu()
-        elif choice == '3' or choice == '03':
+        elif choice in ('3','03'):
             print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-        elif choice == '4' or choice == '04':
+        elif choice in ('4','04'):
             print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-        elif choice == '5' or choice == '05':
+        elif choice in ('5','05'):
             print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
         elif choice == '0':

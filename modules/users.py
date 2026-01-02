@@ -573,11 +573,7 @@ def save_users(users):
                 raise Exception(f"Error actualizando contraseña de {username}: {result.stderr.strip()}")
 
         # 2) Eliminar usuarios del sistema que ya no están en el JSON pero sí estaban en el JSON anterior
-        #    (o que tengan cierta convención como token_ si quieres mantener esa regla)
         for sys_user in system_users:
-            # Sólo consideramos borrar si:
-            #  - el usuario estaba en el JSON anterior (lo gestionaba el script), y ahora no está,
-            #  - OR el usuario comienza por 'token_' y no está en la nueva lista (opcional).
             should_consider = (sys_user in previous_users) or sys_user.startswith('token_')
             if should_consider and sys_user not in users:
                 # Primero desconectar procesos del usuario
@@ -586,11 +582,10 @@ def save_users(users):
                 result = subprocess.run(['userdel', '-f', '-r', sys_user],
                                         capture_output=True, text=True)
                 if result.returncode != 0:
-                    # No abortamos todo por esto, pero lo reportamos
                     raise Exception(f"Error eliminando usuario {sys_user}: {result.stderr.strip()}")
 
         # 3) Si todo salió bien, guardar JSON de forma atómica
-        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, dir=CONFIG_DIR, suffix='.tmp')
+        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, dir=CONFIG_DIR)
         json.dump(users, temp_file, indent=4)
         temp_file.close()
         shutil.move(temp_file.name, USERS_FILE)
@@ -605,11 +600,11 @@ def save_users(users):
         try:
             if 'temp_file' in locals() and os.path.exists(temp_file.name):
                 os.unlink(temp_file.name)
-        except Exception:
+        except:
             pass
         return False
 
-  
+
 def load_token_config():
     """Carga config de tokens"""
     with open(TOKEN_CONFIG_FILE, 'r') as f:
