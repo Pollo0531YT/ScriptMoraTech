@@ -31,8 +31,11 @@ def control_usuarios_menu():
         print(f" {Color.GREEN}[04]{Color.END} ➮ MOSTRAR USUARIOS REGISTRADOS")
         print_line()
         print(f" {Color.GREEN}[09]{Color.END} ➮ BACKUP USUARIOS")
-        print(f" {Color.GREEN}[10]{Color.END} ➮ CHECKUSER ONLINE")
-        print(f" {Color.GREEN}[11]{Color.END} ➮ BOT TELEGRAM")
+        print_line()
+        print(f" {Color.GREEN}[11]{Color.END} ➮ BOT API")
+        print(f" {Color.GREEN}[12]{Color.END} ➮ BOT TELEGRAM")
+        print_line()
+        print(f" {Color.GREEN}[13]{Color.END} ➮ CHECKUSER ONLINE")    
         print_line()
         print(f" {Color.GREEN}[12]{Color.END} ➮ REINICIAR CONTRASEÑA TOKEN")
         print_line()
@@ -41,21 +44,20 @@ def control_usuarios_menu():
         
         choice = input(f" {Color.CYAN}►{Color.END} Opción: ").strip()
         
-        if choice == '1' or choice == '01':
+        if choice == '1':
             add_user()
-        elif choice == '2' or choice == '02':
+        elif choice == '2':
             delete_users_menu()
-        elif choice == '3' or choice == '03':
+        elif choice == '3':
             edit_user()
-        elif choice == '4' or choice == '04':
+        elif choice == '4':
             show_users()
-        elif choice == '9' or choice == '09':
+        elif choice == '9':
             menu_backup()
-        elif choice == '10':
+        elif choice == '13':
             menu_checkuser()
         elif choice == '11':
-            print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
-            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            menu_api_server()
         elif choice == '12':
             reset_token_password()
         elif choice == '0':
@@ -1432,6 +1434,305 @@ def view_checkuser_logs():
     
     try:
         # tail -f del log
+        subprocess.run(['tail', '-f', str(log_file)])
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+
+
+#MENU MAS IMPORANTE, MENU DE API SERVER PARA RENOVAR, CREAR, ETC##
+def menu_api_server():
+    """Menú del servidor API"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}SERVIDOR API REST{Color.END}")
+    print_line()
+    
+    # Verificar si hay servidor corriendo
+    check_server = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+    is_running = 'moratech_api' in check_server.stdout
+    
+    if is_running:
+        # Obtener puerto actual
+        try:
+            port_file = CONFIG_DIR / 'api_port.txt'
+            if port_file.exists():
+                with open(port_file, 'r') as f:
+                    port = f.read().strip()
+            else:
+                port = "9000"
+        except:
+            port = "9000"
+        
+        print(f"\n {Color.GREEN}✓ Servidor API activo en puerto {port}{Color.END}")
+        
+        # Obtener IP
+        try:
+            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                                     capture_output=True, text=True, timeout=3)
+            server_ip = ip_result.stdout.strip()
+            print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/api/{Color.END}")
+        except:
+            pass
+        
+        print_line()
+        print(f" {Color.GREEN}[1]{Color.END} ➮ Ver API Keys")
+        print(f" {Color.GREEN}[2]{Color.END} ➮ Generar nueva API Key")
+        print(f" {Color.GREEN}[3]{Color.END} ➮ Ver logs")
+        print(f" {Color.GREEN}[4]{Color.END} ➮ Detener servidor")
+    else:
+        print(f"\n {Color.YELLOW}Servidor detenido{Color.END}")
+        print_line()
+        print(f" {Color.GREEN}[1]{Color.END} ➮ Iniciar servidor API")
+        print(f" {Color.GREEN}[2]{Color.END} ➮ Configurar API Keys")
+    
+    print_line()
+    print(f" {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}Volver{Color.END}")
+    print_line()
+    
+    choice = input(f" {Color.CYAN}►{Color.END} Opción: ").strip()
+    
+    if choice == '1':
+        if is_running:
+            view_api_keys()
+        else:
+            start_api_server()
+    elif choice == '2':
+        if is_running:
+            generate_api_key()
+        else:
+            manage_api_keys()
+    elif choice == '3' and is_running:
+        view_api_logs()
+    elif choice == '4' and is_running:
+        stop_api_server()
+    elif choice == '0':
+        return
+    else:
+        menu_api_server()
+
+
+def start_api_server():
+    """Iniciar servidor API"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}INICIAR SERVIDOR API{Color.END}")
+    print_line()
+    
+    port = input(f"\n {Color.GREEN}Puerto para API (default: 9000): {Color.END}").strip()
+    if not port:
+        port = "9000"
+    
+    print(f"\n {Color.YELLOW}Iniciando servidor API...{Color.END}")
+    
+    try:
+        # Obtener ruta del script
+        import os
+        api_script = os.path.join(os.path.dirname(__file__), 'api_server.py')
+        
+        if not os.path.exists(api_script):
+            print(f" {Color.RED}✗ Error: api_server.py no encontrado{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+        
+        # Verificar Flask
+        check_flask = subprocess.run(['python3', '-c', 'import flask'], 
+                                    capture_output=True, text=True)
+        
+        if check_flask.returncode != 0:
+            print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
+            subprocess.run(['apt-get', 'install', '-y', 'python3-flask'],
+                         capture_output=True, text=True)
+            print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
+        else:
+            print(f" {Color.GREEN}✓ Flask disponible{Color.END}")
+        
+        # Abrir puerto
+        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        
+        # Iniciar servidor
+        import time
+        subprocess.run([
+            'screen', '-dmS', 'moratech_api',
+            'python3', api_script, port
+        ])
+        
+        time.sleep(2)
+        
+        # Verificar
+        check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+        if 'moratech_api' not in check.stdout:
+            print(f"\n {Color.RED}✗ El servidor no pudo iniciar{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+        
+        # Guardar puerto
+        port_file = CONFIG_DIR / 'api_port.txt'
+        with open(port_file, 'w') as f:
+            f.write(port)
+        
+        # Obtener IP
+        try:
+            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                                     capture_output=True, text=True, timeout=3)
+            server_ip = ip_result.stdout.strip()
+        except:
+            server_ip = "TU_IP"
+        
+        print(f"\n {Color.GREEN}✓ Servidor API iniciado{Color.END}")
+        print(f"\n {Color.CYAN}Configuración:{Color.END}")
+        print(f" {Color.CYAN}Puerto: {Color.GREEN}{port}{Color.END}")
+        print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/api/{Color.END}")
+        
+        print(f"\n {Color.YELLOW}⚠️  IMPORTANTE: Configura tus API Keys en opción [2]{Color.END}")
+        
+        moratech.log_action("admin", f"API Server iniciado en puerto {port}")
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        import traceback
+        traceback.print_exc()
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    menu_api_server()
+
+
+def stop_api_server():
+    """Detener servidor API"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}DETENER SERVIDOR API{Color.END}")
+    print_line()
+    
+    confirm = input(f"\n {Color.YELLOW}¿Detener servidor API? (s/n): {Color.END}").strip().lower()
+    
+    if confirm == 's':
+        try:
+            subprocess.run(['screen', '-S', 'moratech_api', '-X', 'quit'], 
+                         stderr=subprocess.DEVNULL)
+            print(f"\n {Color.GREEN}✓ Servidor detenido{Color.END}")
+            moratech.log_action("admin", "API Server detenido")
+        except Exception as e:
+            print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    else:
+        print(f"\n {Color.YELLOW}Operación cancelada{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    menu_api_server()
+
+
+def manage_api_keys():
+    """Gestionar API Keys"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}GESTIÓN DE API KEYS{Color.END}")
+    print_line()
+    
+    api_keys_file = CONFIG_DIR / 'api_keys.json'
+    
+    if not api_keys_file.exists():
+        print(f"\n {Color.YELLOW}No hay API Keys configuradas{Color.END}")
+        print(f"\n {Color.GREEN}Creando API Key inicial...{Color.END}")
+        
+        import secrets
+        api_key = secrets.token_urlsafe(32)
+        
+        api_keys = {
+            "main": api_key
+        }
+        
+        with open(api_keys_file, 'w') as f:
+            json.dump(api_keys, f, indent=4)
+        
+        print(f"\n {Color.GREEN}✓ API Key creada:{Color.END}")
+        print(f" {Color.CYAN}Nombre: {Color.YELLOW}main{Color.END}")
+        print(f" {Color.CYAN}Key: {Color.GREEN}{api_key}{Color.END}")
+        
+        print(f"\n {Color.YELLOW}⚠️  Guarda esta clave de forma segura!{Color.END}")
+    else:
+        print(f"\n {Color.GREEN}API Keys existentes:{Color.END}\n")
+        
+        with open(api_keys_file, 'r') as f:
+            api_keys = json.load(f)
+        
+        for name, key in api_keys.items():
+            print(f" {Color.CYAN}{name}: {Color.GREEN}{key}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    menu_api_server()
+
+
+def view_api_keys():
+    """Ver API Keys"""
+    manage_api_keys()
+
+
+def generate_api_key():
+    """Generar nueva API Key"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}GENERAR NUEVA API KEY{Color.END}")
+    print_line()
+    
+    name = input(f"\n {Color.GREEN}Nombre para la API Key: {Color.END}").strip()
+    
+    if not name:
+        print(f" {Color.RED}✗ Nombre requerido{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    api_keys_file = CONFIG_DIR / 'api_keys.json'
+    
+    if api_keys_file.exists():
+        with open(api_keys_file, 'r') as f:
+            api_keys = json.load(f)
+    else:
+        api_keys = {}
+    
+    import secrets
+    api_key = secrets.token_urlsafe(32)
+    
+    api_keys[name] = api_key
+    
+    with open(api_keys_file, 'w') as f:
+        json.dump(api_keys, f, indent=4)
+    
+    print(f"\n {Color.GREEN}✓ API Key creada:{Color.END}")
+    print(f" {Color.CYAN}Nombre: {Color.YELLOW}{name}{Color.END}")
+    print(f" {Color.CYAN}Key: {Color.GREEN}{api_key}{Color.END}")
+    
+    print(f"\n {Color.YELLOW}⚠️  Guarda esta clave de forma segura!{Color.END}")
+    
+    moratech.log_action("admin", f"API Key generada: {name}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    menu_api_server()
+
+
+def view_api_logs():
+    """Ver logs del API"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}LOGS DEL API (Ctrl+C para salir){Color.END}")
+    print_line()
+    
+    log_file = CONFIG_DIR / 'api.log'
+    
+    if not log_file.exists():
+        print(f"\n {Color.YELLOW}No hay logs todavía{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    try:
         subprocess.run(['tail', '-f', str(log_file)])
     except KeyboardInterrupt:
         pass

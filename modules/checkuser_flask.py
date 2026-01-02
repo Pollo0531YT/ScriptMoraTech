@@ -35,7 +35,7 @@ def check_user():
         username = data.get('user', '').strip()
         
         print(f"[CheckUser] Consultando: {username}")
-        log_request(username, "Query")
+        log_request(username, "Consulta recibida")
         
         if not username:
             log_request(username, "Not exist - Empty user")
