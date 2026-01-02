@@ -99,10 +99,15 @@ def add_ssh_user():
     password = input(f"{Color.GREEN}Contraseña: {Color.END}").strip()
     
     # Días
-    days = input(f"{Color.GREEN}Días de duración (0 = ilimitado): {Color.END}").strip()
+    days = input(f"{Color.GREEN}Días de duración (0 = hoy 6pm): {Color.END}").strip()
     try:
         days = int(days)
-        expires = (datetime.now() + timedelta(days=days)).isoformat() if days > 0 else None
+        if days >= 0:
+            # Calcular fecha de expiración a las 6pm
+            expire_date = (datetime.now().date() + timedelta(days=days))
+            expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
+        else:
+            expires = None       
     except:
         expires = None
     
@@ -157,10 +162,12 @@ def add_token_user():
         return
     
     # Días
-    days = input(f"{Color.GREEN}Días de duración: {Color.END}").strip()
+    days = input(f"{Color.GREEN}Días de duración (0 = hoy 6pm): {Color.END}").strip()
     try:
         days = int(days)
-        expires = (datetime.now() + timedelta(days=days)).isoformat()
+        # Calcular fecha de expiración a las 6pm
+        expire_date = (datetime.now().date() + timedelta(days=days))
+        expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
     except:
         print(f"{Color.RED}✗ Valor inválido{Color.END}")
         input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
@@ -185,6 +192,152 @@ def add_token_user():
         print(f"\n{Color.RED}✗ Error creando usuario en el sistema{Color.END}")
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
+def edit_user():
+    """Editar o renovar usuario"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}EDITAR/RENOVAR USUARIO{Color.END}")
+    print_line()
+    
+    users = load_users()
+    
+    if not users:
+        print(f"\n {Color.YELLOW}No hay usuarios registrados{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    # Mostrar usuarios disponibles
+    print(f"\n {Color.YELLOW}Usuarios disponibles:{Color.END}\n")
+    for i, (username, data) in enumerate(users.items(), 1):
+        user_type = data.get('type', 'ssh')
+        
+        # Calcular status primero
+        expires = data.get('expires')
+        if expires:
+            expire_date = datetime.fromisoformat(expires)
+            if datetime.now() > expire_date:
+                status = f"{Color.RED}EXPIRADO{Color.END}"
+            else:
+                days = (expire_date - datetime.now()).days
+                status = f"{Color.GREEN}{days} días{Color.END}"
+        else:
+            status = f"{Color.BLUE}ILIMITADO{Color.END}"
+        
+        # Mostrar nombre y token
+        if user_type == 'token':
+            display_name = data.get('display_name', username)
+            user_label = f"{display_name} ({username})"
+        else:
+            user_label = f"{username} (ssh)"
+        
+        print(f" {Color.GREEN}[{i}]{Color.END} {user_label} - {status}")
+    
+    print_line()
+    username_input = input(f"\n {Color.GREEN}Ingresa el nombre de usuario o token: {Color.END}").strip()
+    
+    if username_input not in users:
+        print(f" {Color.RED}✗ Usuario no encontrado{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    user_data = users[username_input]
+    
+    # Menú de edición
+    print(f"\n {Color.CYAN}--- EDITAR: {username_input} ---{Color.END}")
+    print(f"\n {Color.GREEN}[1]{Color.END} Sumar días")
+    print(f" {Color.GREEN}[2]{Color.END} Reiniciar días")
+    print(f" {Color.GREEN}[3]{Color.END} Cambiar contraseña")
+    print(f" {Color.GREEN}[4]{Color.END} Eliminar usuario")
+    print(f" {Color.RED}[0]{Color.END} Cancelar")
+    
+    choice = input(f"\n {Color.CYAN}►{Color.END} Opción: ").strip()
+    
+    if choice == '1':
+        # Sumar días
+        days_to_add = input(f"\n {Color.GREEN}Días a sumar: {Color.END}").strip()
+        try:
+            days_to_add = int(days_to_add)
+            
+            if user_data.get('expires'):
+                current_expire = datetime.fromisoformat(user_data['expires'])
+                if datetime.now() > current_expire:
+                    # Si ya expiró, sumar desde hoy a las 6pm
+                    expire_date = (datetime.now().date() + timedelta(days=days_to_add))
+                    new_expire = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
+                else:
+                    # Si no ha expirado, sumar días manteniendo la hora 6pm
+                    new_expire = current_expire + timedelta(days=days_to_add)
+            else:
+                # Si no tiene expiración, crear desde hoy a las 6pm
+                expire_date = (datetime.now().date() + timedelta(days=days_to_add))
+                new_expire = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
+
+            users[username_input]['expires'] = new_expire.isoformat()
+
+            if save_users(users):
+                new_days = (new_expire - datetime.now()).days
+                print(f"\n {Color.GREEN}✓ Se sumaron {days_to_add} días{Color.END}")
+                print(f" {Color.CYAN}Nuevo total: {new_days} días{Color.END}")
+                moratech.log_action("admin", f"Días sumados a {username_input}: +{days_to_add}")
+            else:
+                print(f" {Color.RED}✗ Los cambios NO fueron aplicados{Color.END}")
+        except:
+            print(f" {Color.RED}✗ Valor inválido{Color.END}")
+    
+    elif choice == '2':
+        # Reiniciar días
+        new_days = input(f"\n {Color.GREEN}Nuevos días (0 = hoy 6pm): {Color.END}").strip()
+        try:
+            new_days = int(new_days)
+            
+            if new_days >= 0:
+                # Calcular fecha de expiración a las 6pm
+                expire_date = (datetime.now().date() + timedelta(days=new_days))
+                new_expire = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
+                users[username_input]['expires'] = new_expire.isoformat()
+            else:
+                users[username_input]['expires'] = None
+            
+            if save_users(users):
+                print(f"\n {Color.GREEN}✓ Días reiniciados{Color.END}")
+                print(f" {Color.CYAN}Nuevo total: {new_days if new_days > 0 else 'ILIMITADO'} días{Color.END}")
+                moratech.log_action("admin", f"Días reiniciados para {username_input}: {new_days}")
+            else:
+                print(f" {Color.RED}✗ Los cambios NO fueron aplicados{Color.END}")
+        except:
+            print(f" {Color.RED}✗ Valor inválido{Color.END}")
+    
+    elif choice == '3':
+        # Cambiar contraseña
+        if user_data.get('type') == 'token':
+            print(f"\n {Color.YELLOW}Los usuarios token usan la contraseña maestra{Color.END}")
+            print(f" {Color.YELLOW}Usa la opción [12] del menú principal para cambiarla{Color.END}")
+        else:
+            new_pass = input(f"\n {Color.GREEN}Nueva contraseña: {Color.END}").strip()
+            users[username_input]['password'] = new_pass
+            if save_users(users):
+                print(f"\n {Color.GREEN}✓ Contraseña actualizada{Color.END}")
+                moratech.log_action("admin", f"Contraseña cambiada para {username_input}")
+            else:
+                print(f" {Color.RED}✗ Los cambios NO fueron aplicados{Color.END}")
+    
+    elif choice == '4':
+        # Eliminar usuario
+        confirm = input(f"\n {Color.RED}¿Eliminar usuario {username_input}? (s/n): {Color.END}").strip().lower()
+        if confirm == 's':
+            del users[username_input]
+            if save_users(users):
+                print(f"\n {Color.GREEN}✓ Usuario eliminado{Color.END}")
+                moratech.log_action("admin", f"Usuario eliminado: {username_input}")
+            else:
+                print(f" {Color.RED}✗ Error eliminando usuario{Color.END}")
+        else:
+            print(f" {Color.YELLOW}Operación cancelada{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+  
+  
 def delete_users_menu():
     """Menú para eliminar usuarios"""
     while True:
@@ -286,147 +439,7 @@ def delete_all_users():
     
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
-def edit_user():
-    """Editar o renovar usuario"""
-    clear_screen()
-    print_banner()
-    print_line()
-    print(f" {Color.CYAN}EDITAR/RENOVAR USUARIO{Color.END}")
-    print_line()
-    
-    users = load_users()
-    
-    if not users:
-        print(f"\n {Color.YELLOW}No hay usuarios registrados{Color.END}")
-        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-        return
-    
-    # Mostrar usuarios disponibles
-    print(f"\n {Color.YELLOW}Usuarios disponibles:{Color.END}\n")
-    for i, (username, data) in enumerate(users.items(), 1):
-        user_type = data.get('type', 'ssh')
-        
-        # Calcular status primero
-        expires = data.get('expires')
-        if expires:
-            expire_date = datetime.fromisoformat(expires)
-            if datetime.now() > expire_date:
-                status = f"{Color.RED}EXPIRADO{Color.END}"
-            else:
-                days = (expire_date - datetime.now()).days
-                status = f"{Color.GREEN}{days} días{Color.END}"
-        else:
-            status = f"{Color.BLUE}ILIMITADO{Color.END}"
-        
-        # Mostrar nombre y token
-        if user_type == 'token':
-            display_name = data.get('display_name', username)
-            user_label = f"{display_name} ({username})"
-        else:
-            user_label = f"{username} (ssh)"
-        
-        print(f" {Color.GREEN}[{i}]{Color.END} {user_label} - {status}")
-    
-    print_line()
-    username_input = input(f"\n {Color.GREEN}Ingresa el nombre de usuario o token: {Color.END}").strip()
-    
-    if username_input not in users:
-        print(f" {Color.RED}✗ Usuario no encontrado{Color.END}")
-        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-        return
-    
-    user_data = users[username_input]
-    
-    # Menú de edición
-    print(f"\n {Color.CYAN}--- EDITAR: {username_input} ---{Color.END}")
-    print(f"\n {Color.GREEN}[1]{Color.END} Sumar días")
-    print(f" {Color.GREEN}[2]{Color.END} Reiniciar días")
-    print(f" {Color.GREEN}[3]{Color.END} Cambiar contraseña")
-    print(f" {Color.GREEN}[4]{Color.END} Eliminar usuario")
-    print(f" {Color.RED}[0]{Color.END} Cancelar")
-    
-    choice = input(f"\n {Color.CYAN}►{Color.END} Opción: ").strip()
-    
-    if choice == '1':
-        # Sumar días
-        days_to_add = input(f"\n {Color.GREEN}Días a sumar: {Color.END}").strip()
-        try:
-            days_to_add = int(days_to_add)
-            
-            if user_data.get('expires'):
-                current_expire = datetime.fromisoformat(user_data['expires'])
-                if datetime.now() > current_expire:
-                    # Si ya expiró, sumar desde hoy
-                    new_expire = datetime.now() + timedelta(days=days_to_add)
-                else:
-                    # Si no ha expirado, sumar a la fecha actual
-                    new_expire = current_expire + timedelta(days=days_to_add)
-            else:
-                # Si es ilimitado, crear fecha desde hoy
-                new_expire = datetime.now() + timedelta(days=days_to_add)
-
-            users[username_input]['expires'] = new_expire.isoformat()
-
-            if save_users(users):
-                new_days = (new_expire - datetime.now()).days
-                print(f"\n {Color.GREEN}✓ Se sumaron {days_to_add} días{Color.END}")
-                print(f" {Color.CYAN}Nuevo total: {new_days} días{Color.END}")
-                moratech.log_action("admin", f"Días sumados a {username_input}: +{days_to_add}")
-            else:
-                print(f" {Color.RED}✗ Los cambios NO fueron aplicados{Color.END}")
-        except:
-            print(f" {Color.RED}✗ Valor inválido{Color.END}")
-    
-    elif choice == '2':
-        # Reiniciar días
-        new_days = input(f"\n {Color.GREEN}Nuevos días (0 = ilimitado): {Color.END}").strip()
-        try:
-            new_days = int(new_days)
-            
-            if new_days > 0:
-                new_expire = datetime.now() + timedelta(days=new_days)
-                users[username_input]['expires'] = new_expire.isoformat()
-            else:
-                users[username_input]['expires'] = None
-            
-            if save_users(users):
-                print(f"\n {Color.GREEN}✓ Días reiniciados{Color.END}")
-                print(f" {Color.CYAN}Nuevo total: {new_days if new_days > 0 else 'ILIMITADO'} días{Color.END}")
-                moratech.log_action("admin", f"Días reiniciados para {username_input}: {new_days}")
-            else:
-                print(f" {Color.RED}✗ Los cambios NO fueron aplicados{Color.END}")
-        except:
-            print(f" {Color.RED}✗ Valor inválido{Color.END}")
-    
-    elif choice == '3':
-        # Cambiar contraseña
-        if user_data.get('type') == 'token':
-            print(f"\n {Color.YELLOW}Los usuarios token usan la contraseña maestra{Color.END}")
-            print(f" {Color.YELLOW}Usa la opción [12] del menú principal para cambiarla{Color.END}")
-        else:
-            new_pass = input(f"\n {Color.GREEN}Nueva contraseña: {Color.END}").strip()
-            users[username_input]['password'] = new_pass
-            if save_users(users):
-                print(f"\n {Color.GREEN}✓ Contraseña actualizada{Color.END}")
-                moratech.log_action("admin", f"Contraseña cambiada para {username_input}")
-            else:
-                print(f" {Color.RED}✗ Los cambios NO fueron aplicados{Color.END}")
-    
-    elif choice == '4':
-        # Eliminar usuario
-        confirm = input(f"\n {Color.RED}¿Eliminar usuario {username_input}? (s/n): {Color.END}").strip().lower()
-        if confirm == 's':
-            del users[username_input]
-            if save_users(users):
-                print(f"\n {Color.GREEN}✓ Usuario eliminado{Color.END}")
-                moratech.log_action("admin", f"Usuario eliminado: {username_input}")
-            else:
-                print(f" {Color.RED}✗ Error eliminando usuario{Color.END}")
-        else:
-            print(f" {Color.YELLOW}Operación cancelada{Color.END}")
-    
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-    
+  
 def show_users():
     """Mostrar usuarios registrados"""
     clear_screen()
