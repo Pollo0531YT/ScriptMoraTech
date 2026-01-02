@@ -15,6 +15,9 @@ class Color:
     RED = '\033[91m'
     BOLD = '\033[1m'
     END = '\033[0m'
+    WHITE = '\033[97m'     
+    MAGENTA = '\033[35m'    
+    GRAY = '\033[90m'     
 
 # Configuración
 CONFIG_DIR = Path.home() / '.moratech'
