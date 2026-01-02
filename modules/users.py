@@ -51,8 +51,7 @@ def control_usuarios_menu():
         elif choice == '9' or choice == '09':
             menu_backup()
         elif choice == '10':
-            print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
-            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            menu_checkuser()
         elif choice == '11':
             print(f"\n {Color.YELLOW}Función en desarrollo...{Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
@@ -336,8 +335,7 @@ def edit_user():
             print(f" {Color.YELLOW}Operación cancelada{Color.END}")
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-  
-  
+   
 def delete_users_menu():
     """Menú para eliminar usuarios"""
     while True:
@@ -438,8 +436,7 @@ def delete_all_users():
             print(f"{Color.RED}✗ Error eliminando usuarios del sistema{Color.END}")
     
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-
-  
+ 
 def show_users():
     """Mostrar usuarios registrados"""
     clear_screen()
@@ -628,9 +625,9 @@ def menu_backup():
         elif choice == '2':
             restore_online()
         elif choice == '3':
-            restore_local()
+            restore_local_m()
         elif choice == '4':
-            list_backups()
+            list_backups_m()
         elif choice == '0':
             break
 
@@ -1186,3 +1183,266 @@ def list_backups_m():
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+#menu del checkuser
+
+def menu_checkuser():
+    """Menú de CheckUser Online"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}CHECKUSER ONLINE{Color.END}")
+    print_line()
+    
+    # Verificar si hay servidor corriendo
+    check_server = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+    is_running = 'moratech_checkuser' in check_server.stdout
+    
+    if is_running:
+        # Obtener puerto actual
+        try:
+            port_file = CONFIG_DIR / 'checkuser_port.txt'
+            if port_file.exists():
+                with open(port_file, 'r') as f:
+                    port = f.read().strip()
+            else:
+                port = "8888"
+        except:
+            port = "8888"
+        
+        print(f"\n {Color.GREEN}✓ Servidor activo en puerto {port}{Color.END}")
+        
+        # Obtener IP
+        try:
+            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                                     capture_output=True, text=True, timeout=3)
+            server_ip = ip_result.stdout.strip()
+            print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/checkUser{Color.END}")
+        except:
+            pass
+        
+        print_line()
+        print(f" {Color.GREEN}[1]{Color.END} ➮ Ver logs en tiempo real")
+        print(f" {Color.GREEN}[2]{Color.END} ➮ Detener servidor")
+    else:
+        print(f"\n {Color.YELLOW}Servidor detenido{Color.END}")
+        print_line()
+        print(f" {Color.GREEN}[1]{Color.END} ➮ Iniciar servidor CheckUser")
+    
+    print_line()
+    print(f" {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}Volver{Color.END}")
+    print_line()
+    
+    choice = input(f" {Color.CYAN}►{Color.END} Opción: ").strip()
+    
+    if choice == '1':
+        if is_running:
+            view_checkuser_logs()
+        else:
+            start_checkuser_server()
+    elif choice == '2' and is_running:
+        stop_checkuser_server()
+    elif choice == '0':
+        return
+
+
+def start_checkuser_server():
+    """Iniciar servidor CheckUser con Flask"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}INICIAR CHECKUSER ONLINE{Color.END}")
+    print_line()
+    
+    port = input(f"\n {Color.GREEN}Puerto para CheckUser (default: 8888): {Color.END}").strip()
+    if not port:
+        port = "8888"
+    
+    print(f"\n {Color.YELLOW}Creando servidor Flask...{Color.END}")
+    
+    try:
+        # Crear script Flask
+        flask_script = CONFIG_DIR / 'checkuser_server.py'
+        
+        flask_code = f'''#!/usr/bin/env python3
+import json
+from datetime import datetime
+from flask import Flask, request, jsonify
+from pathlib import Path
+
+app = Flask(__name__)
+
+CONFIG_DIR = Path.home() / '.moratech'
+USERS_FILE = CONFIG_DIR / 'users.json'
+LOG_FILE = CONFIG_DIR / 'checkuser.log'
+
+def log_request(user, result):
+    """Registrar petición"""
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    with open(LOG_FILE, 'a') as f:
+        f.write(f"[{{timestamp}}] User: {{user}} -> Result: {{result}}\\n")
+
+@app.route('/checkUser', methods=['POST'])
+def check_user():
+    try:
+        # Leer datos del request
+        data = request.get_json()
+        username = data.get('user', '').strip()
+        
+        print(f"[CheckUser] Consultando: {{username}}")
+        log_request(username, "Query")
+        
+        if not username:
+            log_request(username, "Not exist - Empty user")
+            return jsonify("Not exist"), 200
+        
+        # Leer usuarios
+        with open(USERS_FILE, 'r') as f:
+            users = json.load(f)
+        
+        if username not in users:
+            log_request(username, "Not exist")
+            return jsonify("Not exist"), 200
+        
+        user_data = users[username]
+        expires = user_data.get('expires')
+        
+        if not expires:
+            # Usuario sin expiración
+            log_request(username, "No expiry")
+            return jsonify("Not exist"), 200
+        
+        # Parsear fecha de expiración
+        expire_date = datetime.fromisoformat(expires)
+        
+        # ⚠️ IMPORTANTE: Sumar 1 día para compatibilidad con Android
+        # El sistema Android resta 1 día, así que enviamos +1
+        expire_date_adjusted = expire_date.replace(day=expire_date.day + 1)
+        
+        # Formato: ddmmyyyy (sin separadores)
+        result = expire_date_adjusted.strftime('%d%m%Y')
+        
+        print(f"[CheckUser] Usuario {{username}} -> {{result}}")
+        log_request(username, result)
+        
+        return jsonify(result), 200
+        
+    except Exception as e:
+        print(f"[CheckUser] Error: {{e}}")
+        log_request("ERROR", str(e))
+        return jsonify("Not exist"), 500
+
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port={port}, debug=False)
+'''
+        
+        with open(flask_script, 'w') as f:
+            f.write(flask_code)
+        
+        # Hacer ejecutable
+        subprocess.run(['chmod', '+x', str(flask_script)])
+        
+        print(f" {Color.GREEN}✓ Script creado{Color.END}")
+        
+        # Instalar Flask si no está
+        print(f"\n {Color.YELLOW}Verificando Flask...{Color.END}")
+        result = subprocess.run(['pip3', 'show', 'flask'], capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
+            subprocess.run(['pip3', 'install', 'flask', '--break-system-packages'], 
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
+        else:
+            print(f" {Color.GREEN}✓ Flask ya instalado{Color.END}")
+        
+        # Abrir puerto en firewall
+        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        
+        # Iniciar servidor en screen
+        subprocess.run([
+            'screen', '-dmS', 'moratech_checkuser',
+            'python3', str(flask_script)
+        ])
+        
+        # Guardar puerto
+        port_file = CONFIG_DIR / 'checkuser_port.txt'
+        with open(port_file, 'w') as f:
+            f.write(port)
+        
+        # Obtener IP
+        try:
+            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                                     capture_output=True, text=True, timeout=3)
+            server_ip = ip_result.stdout.strip()
+        except:
+            server_ip = "TU_IP"
+        
+        print(f"\n {Color.GREEN}✓ Servidor CheckUser iniciado{Color.END}")
+        print(f"\n {Color.CYAN}Configuración:{Color.END}")
+        print(f" {Color.CYAN}Puerto: {Color.GREEN}{port}{Color.END}")
+        print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/checkUser{Color.END}")
+        
+        print(f"\n {Color.YELLOW}Nota: El servidor quedará activo en background{Color.END}")
+        print(f" {Color.YELLOW}Para ver logs: opción [1] en el menú{Color.END}")
+        
+        moratech.log_action("admin", f"CheckUser Online iniciado en puerto {port}")
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        import traceback
+        traceback.print_exc()
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+
+def stop_checkuser_server():
+    """Detener servidor CheckUser"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}DETENER CHECKUSER{Color.END}")
+    print_line()
+    
+    confirm = input(f"\n {Color.YELLOW}¿Detener servidor CheckUser? (s/n): {Color.END}").strip().lower()
+    
+    if confirm == 's':
+        try:
+            # Detener screen
+            subprocess.run(['screen', '-S', 'moratech_checkuser', '-X', 'quit'], 
+                         stderr=subprocess.DEVNULL)
+            
+            print(f"\n {Color.GREEN}✓ Servidor detenido{Color.END}")
+            moratech.log_action("admin", "CheckUser Online detenido")
+            
+        except Exception as e:
+            print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    else:
+        print(f"\n {Color.YELLOW}Operación cancelada{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+
+def view_checkuser_logs():
+    """Ver logs del CheckUser en tiempo real"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}LOGS DE CHECKUSER (Ctrl+C para salir){Color.END}")
+    print_line()
+    
+    log_file = CONFIG_DIR / 'checkuser.log'
+    
+    if not log_file.exists():
+        print(f"\n {Color.YELLOW}No hay logs todavía{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    try:
+        # tail -f del log
+        subprocess.run(['tail', '-f', str(log_file)])
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
