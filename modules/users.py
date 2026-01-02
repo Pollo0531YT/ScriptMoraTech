@@ -513,9 +513,9 @@ def save_users(users):
                     raise Exception(f"Error creando usuario {username}: {result.stderr}")
             
             # Actualizar contraseña
-            password = data.get('password', '')
+            password = str(data.get('password', ''))
             result = subprocess.run(['chpasswd'], 
-                                  input=f"{username}:{password}\n".encode(),
+                                  input=f"{username}:{password}\n".encode('utf-8'),
                                   capture_output=True, text=True)
             if result.returncode != 0:
                 raise Exception(f"Error actualizando contraseña de {username}: {result.stderr}")
