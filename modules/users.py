@@ -1347,23 +1347,40 @@ if __name__ == '__main__':
         # Instalar Flask si no está
         print(f"\n {Color.YELLOW}Verificando Flask...{Color.END}")
 
-        # Intentar con pip o pip3
-        pip_cmd = 'pip'
-        check_pip = subprocess.run(['which', 'pip'], capture_output=True, text=True)
-        if check_pip.returncode != 0:
-            check_pip3 = subprocess.run(['which', 'pip3'], capture_output=True, text=True)
-            if check_pip3.returncode == 0:
-                pip_cmd = 'pip3'
+        # Detectar pip disponible
+        pip_cmd = None
+        for cmd in ['pip', 'pip3', 'python3 -m pip', 'python -m pip']:
+            try:
+                check = subprocess.run(cmd.split() + ['--version'], 
+                                    capture_output=True, text=True, timeout=5)
+                if check.returncode == 0:
+                    pip_cmd = cmd
+                    break
+            except:
+                continue
 
-        result = subprocess.run([pip_cmd, 'show', 'flask'], capture_output=True, text=True)
-
-        if result.returncode != 0:
-            print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
-            subprocess.run([pip_cmd, 'install', 'flask', '--break-system-packages'], 
+        if not pip_cmd:
+            print(f" {Color.RED}✗ pip no encontrado, instalando manualmente...{Color.END}")
+            # Intentar instalar pip
+            subprocess.run(['apt-get', 'update'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['apt-get', 'install', '-y', 'python3-pip'], 
                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
-        else:
-            print(f" {Color.GREEN}✓ Flask ya instalado{Color.END}")
+            pip_cmd = 'pip3'
+
+        # Verificar si Flask está instalado
+        try:
+            result = subprocess.run(pip_cmd.split() + ['show', 'flask'], 
+                                capture_output=True, text=True)
+            
+            if result.returncode != 0:
+                print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
+                subprocess.run(pip_cmd.split() + ['install', 'flask', '--break-system-packages'], 
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
+            else:
+                print(f" {Color.GREEN}✓ Flask ya instalado{Color.END}")
+        except Exception as e:
+            print(f" {Color.RED}✗ Error verificando Flask: {e}{Color.END}")
         
         # Abrir puerto en firewall
         subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
