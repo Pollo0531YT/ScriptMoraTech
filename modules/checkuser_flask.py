@@ -25,7 +25,7 @@ def home():
 
 @app.route('/checkUser', methods=['GET'])
 def check_user_info():
-    return "CheckUser MoraTech - Use POST method with JSON: {'user': 'username'}", 200
+    return "CheckUser MoraTech funcionando!", 200
 
 @app.route('/checkUser', methods=['POST'])
 def check_user():
@@ -39,7 +39,7 @@ def check_user():
         
         if not username:
             log_request(username, "Not exist - Empty user")
-            return jsonify("Not exist"), 200
+            return "Not exist", 200  # ← SIN jsonify
         
         # Leer usuarios
         with open(USERS_FILE, 'r') as f:
@@ -47,7 +47,7 @@ def check_user():
         
         if username not in users:
             log_request(username, "Not exist")
-            return jsonify("Not exist"), 200
+            return "Not exist", 200  # ← SIN jsonify
         
         user_data = users[username]
         expires = user_data.get('expires')
@@ -55,7 +55,7 @@ def check_user():
         if not expires:
             # Usuario sin expiración
             log_request(username, "No expiry")
-            return jsonify("Not exist"), 200
+            return "Not exist", 200  # ← SIN jsonify
         
         # Parsear fecha de expiración
         expire_date = datetime.fromisoformat(expires)
@@ -70,12 +70,12 @@ def check_user():
         print(f"[CheckUser] Usuario {username} -> {result}")
         log_request(username, result)
         
-        return jsonify(result), 200
+        return result, 200  # ← SIN jsonify
         
     except Exception as e:
         print(f"[CheckUser] Error: {e}")
         log_request("ERROR", str(e))
-        return jsonify("Not exist"), 500
+        return "Not exist", 500  # ← SIN jsonify
 
 if __name__ == '__main__':
     import sys
