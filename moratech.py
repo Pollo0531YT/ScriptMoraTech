@@ -316,9 +316,6 @@ def protocols_menu():
             print(f"\n{Color.YELLOW}Función en desarrollo...{Color.END}")
             input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
-# ==================== FUNCIONES DE PROTOCOLOS ====================
-
-
 # ==================== EXTRAS ====================
 
 def check_and_free_port(port):
@@ -431,9 +428,8 @@ def main_menu(username):
         print(f" {Color.GREEN}[01]{Color.END} ➮ CONTROL USUARIOS (SSH/TOKEN)")
         print(f" {Color.GREEN}[02]{Color.END} ➮ INSTALADOR DE PROTOCOLOS")
         print(f" {Color.GREEN}[03]{Color.END} ➮ OPTIMIZAR VPS")
-        print(f" {Color.GREEN}[04]{Color.END} ➮ ESTADÍSTICAS Y LOGS")
         print_line()
-        print(f" {Color.GREEN}[05]{Color.END} ➮ UPDATE / REMOVE  |  {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}[ SALIR ]{Color.END}")
+        print(f" {Color.GREEN}[04]{Color.END} ➮ UPDATE / REMOVE  |  {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}[ SALIR ]{Color.END}")
         print_line()
         
         choice = input(f" {Color.CYAN}►{Color.END} Opción: ").strip()
