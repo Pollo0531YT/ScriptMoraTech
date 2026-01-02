@@ -7,7 +7,8 @@ import json
 import os
 from pathlib import Path
 
-from moratech import Color, PROTOCOLS_FILE, log_action, clear_screen, print_banner, print_line, configure_forwarding
+from modules.common import Color, PROTOCOLS_FILE, clear_screen, print_banner, print_line
+import moratech
 
 def menu_ssl():
     """Menu de ssl"""
@@ -53,7 +54,6 @@ def menu_ssl():
         else:
             print(f"\n{Color.YELLOW}Función en desarrollo...{Color.END}")
             input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-
 
 def install_ssl():
     """Instalar SSL con Let's Encrypt (igual a la que funciona)"""
@@ -176,7 +176,7 @@ TIMEOUTclose = 0
         
         # Forwarding
         print(f" {Color.YELLOW}Configurando forwarding...{Color.END}")
-        configure_forwarding()
+        moratech.configure_forwarding()
         print(f" {Color.GREEN}✓ Forwarding configurado{Color.END}")
         
         # Guardar en config
@@ -195,7 +195,7 @@ TIMEOUTclose = 0
         print(f" {Color.CYAN}Dominio: {domain}{Color.END}")
         print(f" {Color.CYAN}Puerto: {port}{Color.END}")
         print(f" {Color.YELLOW}Certificado válido por 90 días{Color.END}")
-        log_action("admin", f"SSL Let's Encrypt: {domain}:{port}")
+        moratech.log_action("admin", f"SSL Let's Encrypt: {domain}:{port}")
         
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
@@ -265,7 +265,7 @@ def stop_ssl():
                 json.dump(protocols, f, indent=4)
             
             print(f"\n {Color.GREEN}✓ Todos los servicios SSL detenidos{Color.END}")
-            log_action("admin", "Todos los servicios SSL detenidos")
+            moratech.log_action("admin", "Todos los servicios SSL detenidos")
             
         else:
             # Detener puerto específico
@@ -304,7 +304,7 @@ def stop_ssl():
                     subprocess.run(['iptables', '-D', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'], stderr=subprocess.DEVNULL)
                     
                     print(f"\n {Color.GREEN}✓ Puerto {port} SSL detenido{Color.END}")
-                    log_action("admin", f"Puerto {port} SSL detenido")
+                    moratech.log_action("admin", f"Puerto {port} SSL detenido")
                 else:
                     print(f" {Color.RED}✗ Opción inválida{Color.END}")
             except ValueError:

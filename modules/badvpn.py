@@ -7,7 +7,8 @@ import json
 import os
 from pathlib import Path
 
-from moratech import Color, PROTOCOLS_FILE, log_action, clear_screen, print_banner, print_line
+from modules.common import Color, PROTOCOLS_FILE, clear_screen, print_banner, print_line
+import moratech
 
 def menu_badvpn():
     """Menú de BadVPN"""
@@ -175,7 +176,7 @@ def install_badvpn():
 
         print(f"\n {Color.GREEN}✓ BadVPN instalado en puerto {port}{Color.END}")
         print(f" {Color.CYAN}Para llamadas y juegos UDP{Color.END}")
-        log_action("admin", f"BadVPN instalado en puerto {port}")
+        moratech.log_action("admin", f"BadVPN instalado en puerto {port}")
         
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
@@ -250,7 +251,7 @@ def stop_badvpn():
                 json.dump(protocols, f, indent=4)
             
             print(f"\n {Color.GREEN}✓ Todas las instancias de BadVPN detenidas{Color.END}")
-            log_action("admin", "Todas las instancias de BadVPN detenidas")
+            moratech.log_action("admin", "Todas las instancias de BadVPN detenidas")
             
         else:
             # Detener instancia específica
@@ -280,7 +281,7 @@ def stop_badvpn():
                             json.dump(protocols, f, indent=4)
                     
                     print(f"\n {Color.GREEN}✓ BadVPN en puerto {port} detenido{Color.END}")
-                    log_action("admin", f"BadVPN puerto {port} detenido")
+                    moratech.log_action("admin", f"BadVPN puerto {port} detenido")
                 else:
                     print(f" {Color.RED}✗ Opción inválida{Color.END}")
             except ValueError:

@@ -7,7 +7,8 @@ import json
 import os
 from pathlib import Path
 
-from moratech import Color, PROTOCOLS_FILE, log_action, clear_screen, print_banner, print_line, configure_forwarding
+from modules.common import Color, PROTOCOLS_FILE, clear_screen, print_banner, print_line
+import moratech
 
 def menu_phyton():
     """Menu de phyton"""
@@ -376,7 +377,7 @@ if __name__ == '__main__':
 
         # Configurar forwarding
         print(f" {Color.YELLOW}Configurando forwarding...{Color.END}")
-        configure_forwarding()
+        moratech.configure_forwarding()
         print(f" {Color.GREEN}✓ Forwarding configurado{Color.END}")
 
         # Guardar en config
@@ -391,7 +392,7 @@ if __name__ == '__main__':
 
         print(f"\n {Color.GREEN}✓ Proxy Python instalado en puerto {port}{Color.END}")
         print(f" {Color.YELLOW}Para ver logs: screen -r pythonwe{Color.END}")
-        log_action("admin", f"Proxy Python configurado en puerto {port}")
+        moratech.log_action("admin", f"Proxy Python configurado en puerto {port}")
 
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
@@ -482,7 +483,7 @@ def stop_proxy():
                 json.dump(protocols, f, indent=4)
             
             print(f"\n {Color.GREEN}✓ Todos los proxies detenidos{Color.END}")
-            log_action("admin", "Todos los proxies detenidos")
+            moratech.log_action("admin", "Todos los proxies detenidos")
             
         else:
             # Detener proxy específico
@@ -499,7 +500,7 @@ def stop_proxy():
                     subprocess.run(['iptables', '-D', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'], stderr=subprocess.DEVNULL)
                     
                     print(f"\n {Color.GREEN}✓ Proxy en puerto {port} detenido{Color.END}")
-                    log_action("admin", f"Proxy puerto {port} detenido")
+                    moratech.log_action("admin", f"Proxy puerto {port} detenido")
                 else:
                     print(f" {Color.RED}✗ Opción inválida{Color.END}")
             except ValueError:

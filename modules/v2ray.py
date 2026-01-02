@@ -6,7 +6,8 @@ import subprocess
 import json
 from pathlib import Path
 
-from moratech import Color, PROTOCOLS_FILE, log_action, clear_screen, print_banner, print_line
+from modules.common import Color, PROTOCOLS_FILE, clear_screen, print_banner, print_line
+import moratech
 
 
 def menu_v2ray():
@@ -86,7 +87,7 @@ def menu_v2ray():
                 print(f"\n {Color.YELLOW}Reiniciando 3X-UI...{Color.END}")
                 subprocess.run(['x-ui', 'restart'])
                 print(f" {Color.GREEN}✓ 3X-UI reiniciado{Color.END}")
-                log_action("admin", "3X-UI reiniciado")
+                moratech.log_action("admin", "3X-UI reiniciado")
                 input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
                 
             elif choice == '3':
@@ -94,7 +95,7 @@ def menu_v2ray():
                 print(f"\n {Color.YELLOW}Deteniendo 3X-UI...{Color.END}")
                 subprocess.run(['x-ui', 'stop'])
                 print(f" {Color.GREEN}✓ 3X-UI detenido{Color.END}")
-                log_action("admin", "3X-UI detenido")
+                moratech.log_action("admin", "3X-UI detenido")
                 input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
                 
             elif choice == '4':
@@ -124,7 +125,7 @@ def menu_v2ray():
                         pass
                     
                     print(f"\n {Color.GREEN}✓ 3X-UI desinstalado{Color.END}")
-                    log_action("admin", "3X-UI desinstalado")
+                    moratech.log_action("admin", "3X-UI desinstalado")
                 else:
                     print(f"\n {Color.YELLOW}Desinstalación cancelada{Color.END}")
                 
@@ -195,7 +196,7 @@ def install_v2ray():
             
             print(f" {Color.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Color.END}")
             
-            log_action("admin", "3X-UI instalado")
+            moratech.log_action("admin", "3X-UI instalado")
         else:
             print(f"\n {Color.RED}✗ Error durante la instalación{Color.END}")
         
@@ -228,13 +229,13 @@ def stop_v2ray():
             # Detener
             subprocess.run(['x-ui', 'stop'])
             print(f"\n {Color.GREEN}✓ 3X-UI detenido{Color.END}")
-            log_action("admin", "3X-UI detenido")
+            moratech.log_action("admin", "3X-UI detenido")
             
         elif choice == '2':
             # Reiniciar
             subprocess.run(['x-ui', 'restart'])
             print(f"\n {Color.GREEN}✓ 3X-UI reiniciado{Color.END}")
-            log_action("admin", "3X-UI reiniciado")
+            moratech.log_action("admin", "3X-UI reiniciado")
             
         elif choice == '3':
             # Desinstalar
@@ -256,7 +257,7 @@ def stop_v2ray():
                     pass
                 
                 print(f"\n {Color.GREEN}✓ 3X-UI desinstalado{Color.END}")
-                log_action("admin", "3X-UI desinstalado")
+                moratech.log_action("admin", "3X-UI desinstalado")
         
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")

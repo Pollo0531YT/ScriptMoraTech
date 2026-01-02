@@ -13,7 +13,7 @@ import socket
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from modules import ssl, phyton, badvpn, v2ray
+from modules import common, ssl, phyton, badvpn, v2ray
 
 # Colores para terminal
 class Color:
@@ -36,25 +36,13 @@ CONNECTIONS_FILE = CONFIG_DIR / 'connections.json'
 PROTOCOLS_FILE = CONFIG_DIR / 'protocols.json'
 
 def clear_screen():
-    """Limpia la pantalla"""
-    os.system('clear')
+    common.clear_screen
 
 def print_line():
-    """Imprime línea decorativa"""
-    print(f"{Color.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Color.END}")
+    common.print_line
 
 def print_banner():
-    """Muestra el banner de Moratech"""
-    banner = f"""
-{Color.PURPLE}{Color.BOLD}
-    ███╗   ███╗ ██████╗ ██████╗  █████╗ ████████╗███████╗
-    ████╗ ████║██╔═══██╗██╔══██╗██╔══██╗╚══██╔══╝██╔════╝
-    ██╔████╔██║██║   ██║██████╔╝███████║   ██║   █████╗  
-    ██║╚██╔╝██║██║   ██║██╔══██╗██╔══██║   ██║   ██╔══╝  
-    ██║ ╚═╝ ██║╚██████╔╝██║  ██║██║  ██║   ██║   ███████╗
-    ╚═╝     ╚═╝ ╚═════╝ ╚═╝  ╚═╝╚═╝  ╚═╝   ╚═╝   ╚══════╝
-{Color.END}"""
-    print(banner)
+    common.print_banner
 
 def get_system_info():
     """Obtiene información del sistema"""
@@ -172,6 +160,7 @@ def get_active_ports():
         pass
     
     return ports
+
 def init_system():
     """Inicializa el sistema"""
     CONFIG_DIR.mkdir(exist_ok=True)
