@@ -305,8 +305,19 @@ def show_dashboard():
     
     # Puertos en formato de 2 columnas - SOLO ACTIVOS
     if ports:
-        for key, (name, port) in ports.items():
-            print(f" {Color.CYAN}∘{Color.END} {name}: {Color.GREEN}{port}{Color.END}")
+        port_items = [(name, port) for key, (name, port) in ports.items()]
+        
+        for i in range(0, len(port_items), 2):
+            left_name, left_port = port_items[i]
+            
+            if i+1 < len(port_items):
+                right_name, right_port = port_items[i+1]
+                left_text = f" {Color.CYAN}∘{Color.END} {left_name}: {Color.GREEN}{left_port}{Color.END}"
+                right_text = f"{Color.CYAN}∘{Color.END} {right_name}: {Color.GREEN}{right_port}{Color.END}"
+                print(f"{left_text:<45} {right_text}")
+            else:
+                left_text = f" {Color.CYAN}∘{Color.END} {left_name}: {Color.GREEN}{left_port}{Color.END}"
+                print(f"{left_text}")
     else:
         print(f" {Color.YELLOW}No hay protocolos activos{Color.END}")
     
