@@ -88,7 +88,7 @@ def agregar_usuario():
         add_token_user()
 
 def add_ssh_user():
-    """Agregar usuario SSH con sincronización selectiva"""
+    """Agregar usuario SSH con vencimiento a las 6pm"""
     users = load_users()
     print(f"\n{Color.CYAN}--- NUEVO USUARIO SSH ---{Color.END}\n")
     
@@ -111,7 +111,6 @@ def add_ssh_user():
     max_conn = input(f"{Color.GREEN}Máximas conexiones: {Color.END}").strip()
     max_conn = int(max_conn) if max_conn.isdigit() else 1
     
-    # Preparamos el nuevo usuario
     new_user_data = {
         "password": password,
         "role": "user", "type": "ssh",
@@ -121,12 +120,9 @@ def add_ssh_user():
         "enabled": True
     }
     
-    # Agregamos al diccionario local
     users[username] = new_user_data
-
     print(f"\n{Color.YELLOW}⏳ Creando acceso en el sistema...{Color.END}", end="\r", flush=True)
 
-    # LLAMADA OPTIMIZADA: Solo enviamos el usuario nuevo para sincronizar
     if save_users({username: new_user_data}, full_database=users):
         print(f"{' ' * 40}\r{Color.GREEN}✓ Usuario SSH creado exitosamente{Color.END}")
         moratech.log_action("admin", f"Usuario SSH creado: {username}")
@@ -136,7 +132,7 @@ def add_ssh_user():
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def add_token_user():
-    """Agregar usuario Token con sincronización selectiva"""
+    """Agregar usuario Token con vencimiento a las 6pm"""
     token_config = load_token_config()
     users = load_users()
     
@@ -164,7 +160,6 @@ def add_token_user():
         print(f"{Color.RED}✗ Valor de días inválido{Color.END}")
         return
 
-    # Preparamos el nuevo usuario token
     new_token_data = {
         "password": token_config['token_password'],
         "role": "user", "type": "token",
@@ -176,10 +171,8 @@ def add_token_user():
     }
     
     users[token_input] = new_token_data
-
     print(f"\n{Color.YELLOW}⏳ Generando token en el sistema...{Color.END}", end="\r", flush=True)
 
-    # LLAMADA OPTIMIZADA: Solo enviamos el token nuevo para sincronizar
     if save_users({token_input: new_token_data}, full_database=users):
         print(f"{' ' * 40}\r{Color.GREEN}✓ Usuario token creado correctamente{Color.END}")
         moratech.log_action("admin", f"Usuario token creado: {display_name} ({token_input})")
@@ -187,7 +180,7 @@ def add_token_user():
         print(f"\n{Color.RED}✗ Error al registrar el token{Color.END}")
         
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-
+    
 def editar_usuario():
     """Editar o renovar usuario - Optimización Instantánea"""
     clear_screen()
@@ -541,7 +534,7 @@ def info_exacta_usuario():
         print(f"\n {Color.RED}✗ Error: El usuario o token '{search}' no existe en la base de datos.{Color.END}")
         
     input(f"\n{Color.CYAN}Presiona Enter para volver al menú...{Color.END}")
-       
+
 def reset_token_password():
     """Resetear contraseña de tokens"""
     clear_screen()
@@ -575,24 +568,17 @@ def load_users():
         return json.load(f)
 
 def save_users(users_to_sync, full_database=None):
-    """
-    Versión Optimizada: 
-    - users_to_sync: El usuario o usuarios que acaban de cambiar.
-    - full_database: La base de datos completa para guardar el JSON.
-    """
+    """Versión con margen de seguridad para evitar bloqueo SSH prematuro"""
     import tempfile
     import os
     import shutil
 
-    # Si no se pasa una base de datos completa, usamos lo que vamos a sincronizar
     db_to_save = full_database if full_database is not None else users_to_sync
 
     try:
-        # SOLO sincronizamos con Linux los usuarios que cambiaron (users_to_sync)
         for username, data in users_to_sync.items():
-            # 1. Crear si no existe (Rápido)
-            subprocess.run(['id', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            if subprocess.run(['id', username], stdout=subprocess.DEVNULL).returncode != 0:
+            # 1. Crear si no existe
+            if subprocess.run(['id', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
                 subprocess.run(['useradd', '-M', '-s', '/bin/false', username], 
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
@@ -601,25 +587,29 @@ def save_users(users_to_sync, full_database=None):
             subprocess.run(['chpasswd'], input=f"{username}:{password}\n", text=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
-            # 3. Actualizar Expiración (Solo el usuario editado)
+            # 3. Actualizar Expiración en Linux con MARGEN (+2 días)
+            # Esto evita el error "Account expired" porque Linux vence al inicio del día.
             expires = data.get('expires')
             if expires:
                 expire_dt = datetime.fromisoformat(expires)
-                expire_str = expire_dt.strftime('%Y-%m-%d')
-                subprocess.run(['usermod', '-e', expire_str, '-U', '-s', '/bin/false', username], 
+                # Le damos 2 días de gracia a Linux; tu Cron de las 18:00 lo borrará antes.
+                linux_margin = (expire_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+                subprocess.run(['usermod', '-e', linux_margin, '-U', '-s', '/bin/false', username], 
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            else:
+                # Si no tiene fecha, le quitamos la expiración en Linux
+                subprocess.run(['usermod', '-e', '', '-U', username], 
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        # 4. Guardado atómico del JSON (Esto siempre es rápido)
+        # 4. Guardado atómico del JSON
         temp_fd, temp_path = tempfile.mkstemp(dir=str(CONFIG_DIR), text=True)
         with os.fdopen(temp_fd, 'w') as f:
             json.dump(db_to_save, f, indent=4)
         shutil.move(temp_path, str(USERS_FILE))
-
         return True
-
-    except Exception as e:
+    except Exception:
         return False
-    
+      
 def load_token_config():
     """Carga config de tokens"""
     with open(TOKEN_CONFIG_FILE, 'r') as f:
