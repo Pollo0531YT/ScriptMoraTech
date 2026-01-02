@@ -1,130 +1,129 @@
 #!/usr/bin/env python3
 """
-Configuración del sistema de expiración automática
-Se encarga de crear el wrapper /usr/local/bin/moratech-expire y registrar cron.
+expire_setup.py
+
+Configura el wrapper `moratech-expire` y el job en /etc/cron.d para ejecutar
+/usr/local/lib/moratech/modules/expire_users.py diariamente a las 18:00.
+Idempotente: puede ejecutarse varias veces sin romper nada.
 """
+from pathlib import Path
 import os
 import stat
-import subprocess
-from pathlib import Path
 import textwrap
-import sys
 import shutil
+import subprocess
+import sys
 
-MODULE_DIR = Path(__file__).resolve().parent
-# Asumimos que expire_users.py está en el mismo folder (modules)
-EXPIRE_SCRIPT_MODULE = MODULE_DIR / 'expire_users.py'
-WRAPPER_PATH = Path('/usr/local/bin/moratech-expire')
-CRON_FILE = Path('/etc/cron.d/moratech-expire')
-LOCK_PATH = Path('/var/lock/moratech-expire.lock')
-LOG_PATH = Path('/var/log/moratech-expire.log')
+EXPIRE_SCRIPT_PATH = Path("/usr/local/bin/moratech-expire")
+CRON_FILE_PATH = Path("/etc/cron.d/moratech-expire")
+MODULES_DIR = Path("/usr/local/lib/moratech/modules")
+SCRIPT_TARGET = MODULES_DIR / "expire_users.py"
 
-def _is_root():
-    try:
-        return os.geteuid() == 0
-    except AttributeError:
-        # Windows fallback (no need aquí, pero por completitud)
-        return False
+SCRIPT_CONTENT = textwrap.dedent("""\
+    #!/usr/bin/env bash
+    # moratech-expire - wrapper seguro que ejecuta expire_users.py con locking y logging
+    set -euo pipefail
 
-def _write_wrapper(script_target: Path):
-    """Escribe el wrapper bash que usa flock y ejecuta expire_users.py con rutas absolutas."""
-    python_bin = shutil.which('python3') or '/usr/bin/python3'
-    wrapper_content = textwrap.dedent(f"""\
-        #!/usr/bin/env bash
-        # morat ech-expire - wrapper seguro que ejecuta expire_users.py con locking y logging
-        set -euo pipefail
+    PYTHON=$(command -v python3 || echo "/usr/bin/python3")
+    SCRIPT="/usr/local/lib/moratech/modules/expire_users.py"
+    LOCK="/var/lock/moratech-expire.lock"
+    LOG="/var/log/moratech-expire.log"
 
-        PYTHON={python_bin}
-        SCRIPT="{script_target}"
-        LOCK="{LOCK_PATH}"
-        LOG="{LOG_PATH}"
+    # asegurar directorios
+    mkdir -p "$(dirname "$LOCK")" "$(dirname "$LOG")"
+    touch "$LOG" 2>/dev/null || true
+    chown root:root "$(dirname "$LOCK")" "$(dirname "$LOG")" 2>/dev/null || true
+    chown root:root "$LOG" 2>/dev/null || true
+    chmod 600 "$LOG" 2>/dev/null || true
 
-        mkdir -p "$(dirname "$LOCK")" "$(dirname "$LOG")"
-
-        # usar flock para evitar solapamientos
-        /usr/bin/flock -n "$LOCK" -c '
-          echo "==== Ejecutando moratech-expire: $(date \"+%Y-%m-%d %H:%M:%S\") ====" >> "$LOG"
-          if [ -x "$PYTHON" ] && [ -f "$SCRIPT" ]; then
-            cd "{script_target.parent}"
-            "$PYTHON" "$SCRIPT" >> "$LOG" 2>&1 || echo "expire_users.py falló (exit $? )" >> "$LOG"
-          else
-            echo "Error: python o script no encontrado (PYTHON=$PYTHON, SCRIPT=$SCRIPT)" >> "$LOG"
-          fi
-          echo "==== Fin: $(date \"+%Y-%m-%d %H:%M:%S\") ====" >> "$LOG"
-        '
+    # Abrir descriptor 9 sobre el archivo lock y usar flock sobre ese FD para ejecutar en este shell
+    exec 9>"$LOCK"
+    if /usr/bin/flock -n 9; then
+      {
+        echo "==== Ejecutando moratech-expire: $(date "+%Y-%m-%d %H:%M:%S") ===="
+        if [ -x "$PYTHON" ] && [ -f "$SCRIPT" ]; then
+          cd "/usr/local/lib/moratech/modules" || { echo "No existe directorio modules"; exit 1; }
+          "$PYTHON" "$SCRIPT" >> "$LOG" 2>&1 || echo "expire_users.py falló (exit $? )" >> "$LOG"
+        else
+          echo "Error: python o script no encontrado (PYTHON=$PYTHON, SCRIPT=$SCRIPT)" >> "$LOG"
+        fi
+        echo "==== Fin: $(date "+%Y-%m-%d %H:%M:%S") ===="
+      } >> "$LOG" 2>&1
+      /usr/bin/flock -u 9
+    else
+      echo "Otro proceso de expire en ejecución, saliendo." >> "$LOG"
+    fi
     """)
-    WRAPPER_PATH.write_text(wrapper_content)
-    # establecer permisos y propietario root
-    WRAPPER_PATH.chmod(0o755)
 
-def _install_cron_as_root():
-    """Escribe /etc/cron.d entry para root a las 18:00"""
-    cron_text = textwrap.dedent(f"""\
-        # MORATECH - Expiración automática de usuarios a las 18:00
-        # Ejecutado como root
-        0 18 * * * root {WRAPPER_PATH}
+CRON_CONTENT = textwrap.dedent("""\
+    # MORATECH - Expiración automática de usuarios a las 18:00
+    # Ejecutado como root
+    0 18 * * * root /usr/local/bin/moratech-expire
     """)
-    CRON_FILE.write_text(cron_text)
-    CRON_FILE.chmod(0o644)
 
-def _install_cron_user(user_wrapper_path: Path, user_log_path: Path):
-    """Agrega entry en crontab del usuario actual (si no es root)."""
-    # entrada de cron con redirección de logs
-    entry = f"0 18 * * * {user_wrapper_path} >> {user_log_path} 2>&1\n"
-    try:
-        proc = subprocess.run(['crontab', '-l'], capture_output=True, text=True)
-        existing = proc.stdout if proc.returncode == 0 else ''
-        if 'moratech-expire' in existing:
-            return True  # ya está
-        new_cron = existing + "\n# MORATECH - Expiración automática de usuarios a las 18:00\n" + entry
-        p = subprocess.Popen(['crontab', '-'], stdin=subprocess.PIPE, text=True)
-        p.communicate(new_cron)
-        return p.returncode == 0
-    except Exception:
-        return False
+
+def write_file(path: Path, content: str, mode: int = 0o755, as_root: bool = True):
+    """Escribe contenido en path asegurando newline UNIX y permisos."""
+    # Asegurar directorio
+    path.parent.mkdir(parents=True, exist_ok=True)
+    # Escribir con newline unix
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        f.write(content)
+    os.chmod(path, mode)
+
 
 def setup_expire_system():
-    """
-    Configura expiración:
-    - Crea wrapper en /usr/local/bin (si se puede)
-    - Crea /etc/cron.d/moratech-expire si es root
-    - Si NO es root: crea wrapper en ~/.moratech/ y agrega crontab de usuario (best-effort)
-    """
+    """Crea/actualiza el script y el cron. Devuelve True si ok."""
     try:
-        if not EXPIRE_SCRIPT_MODULE.exists():
-            print(f"⚠️  expire_users.py no encontrado en {EXPIRE_SCRIPT_MODULE}. No se configurará cron.")
-            return False
+        # 1) Verificar que el módulo expire_users.py exista (si no existe, avisar pero continuar)
+        if not SCRIPT_TARGET.exists():
+            print(f"[WARN] {SCRIPT_TARGET} no existe. El script se creará, pero expire_users.py debe existir en esa ruta para que funcione.")
+            # No fallamos aquí; el instalador puede copiar expire_users.py después.
 
-        if _is_root():
-            # crear wrapper global
-            _write_wrapper(EXPIRE_SCRIPT_MODULE)
-            _install_cron_as_root()
-            print("✓ Script de expiración creado en /usr/local/bin/moratech-expire")
-            print("✓ Cron instalado en /etc/cron.d/moratech-expire (ejecución diaria a las 18:00 como root)")
-        else:
-            # user-level fallback: crear wrapper en ~/.moratech/moratech-expire
-            user_home = Path.home()
-            user_conf = user_home / '.moratech'
-            user_conf.mkdir(parents=True, exist_ok=True)
-            user_wrapper = user_conf / 'moratech-expire'
-            user_log = user_conf / 'expire.log'
-            user_wrapper_content = textwrap.dedent(f"""\
-                #!/usr/bin/env bash
-                PYTHON="{shutil.which('python3') or '/usr/bin/python3'}"
-                SCRIPT="{EXPIRE_SCRIPT_MODULE}"
-                LOG="{user_log}"
-                /usr/bin/flock -n "{user_conf}/moratech-expire.lock" -c '$PYTHON "$SCRIPT" >> "$LOG" 2>&1'
-            """)
-            user_wrapper.write_text(user_wrapper_content)
-            user_wrapper.chmod(0o750)
-            ok = _install_cron_user(user_wrapper, user_log)
-            if ok:
-                print(f"✓ Wrapper instalado en {user_wrapper}")
-                print("✓ Entry agregado a crontab del usuario actual (ejecución diaria a las 18:00).")
-                print("⚠️ Nota: Para que expire_users.py pueda eliminar cuentas del sistema se requiere ejecutar como root.")
-            else:
-                print("⚠️ No se pudo agregar la entrada al crontab del usuario. Verifica `crontab -l`.")
+        # 2) Escribir el wrapper en /usr/local/bin/moratech-expire
+        write_file(EXPIRE_SCRIPT_PATH, SCRIPT_CONTENT, mode=0o755)
+        print(f"✓ Script escrito: {EXPIRE_SCRIPT_PATH}")
+
+        # 3) Asegurar owner/perm (root)
+        try:
+            os.chown(EXPIRE_SCRIPT_PATH, 0, 0)
+        except PermissionError:
+            pass  # si no somos root, no podemos cambiar owner aquí
+
+        # 4) Escribir cron file en /etc/cron.d (idempotente)
+        write_file(CRON_FILE_PATH, CRON_CONTENT, mode=0o644)
+        print(f"✓ Cron file escrito: {CRON_FILE_PATH}")
+
+        # 5) Asegurar owner/perm del cron
+        try:
+            os.chown(CRON_FILE_PATH, 0, 0)
+        except PermissionError:
+            pass
+
+        # 6) Recargar cron (si systemd presente)
+        if shutil.which("systemctl"):
+            try:
+                subprocess.run(["systemctl", "reload", "cron"], check=False)
+            except Exception:
+                # fallback: restart
+                try:
+                    subprocess.run(["systemctl", "restart", "cron"], check=False)
+                except Exception:
+                    pass
+
+        print("✓ Intentada recarga/restart de cron (si aplica).")
+
+        # 7) Mensaje final
+        print("OK — setup_expire_system completado.")
         return True
+
     except Exception as e:
-        print(f"⚠️ Advertencia: No se pudo configurar expiración automática: {e}")
+        print(f"ERROR: No se pudo configurar expiración automática: {e}")
         return False
+
+
+if __name__ == "__main__":
+    # Si llamás directo: ejecuta la configuración
+    ok = setup_expire_system()
+    if not ok:
+        sys.exit(2)
