@@ -306,8 +306,8 @@ def edit_user():
     print(f"\n {Color.YELLOW}Usuarios disponibles:{Color.END}\n")
     for i, (username, data) in enumerate(users.items(), 1):
         user_type = data.get('type', 'ssh')
-        display_name = data.get('display_name', username) if user_type == 'token' else username
         
+        # Calcular status primero
         expires = data.get('expires')
         if expires:
             expire_date = datetime.fromisoformat(expires)
@@ -319,7 +319,14 @@ def edit_user():
         else:
             status = f"{Color.BLUE}ILIMITADO{Color.END}"
         
-        print(f" {Color.GREEN}[{i}]{Color.END} {display_name} ({user_type}) - {status}")
+        # Mostrar nombre y token
+        if user_type == 'token':
+            display_name = data.get('display_name', username)
+            user_label = f"{display_name} ({username})"
+        else:
+            user_label = f"{username} (ssh)"
+        
+        print(f" {Color.GREEN}[{i}]{Color.END} {user_label} - {status}")
     
     print_line()
     username_input = input(f"\n {Color.GREEN}Ingresa el nombre de usuario o token: {Color.END}").strip()
@@ -362,15 +369,12 @@ def edit_user():
             users[username_input]['expires'] = new_expire.isoformat()
 
             if save_users(users):
-                print(f"\n {Color.GREEN}✓ Cambios guardados{Color.END}")
-                moratech.log_action("admin", f"Usuario editado: {username_input}")
+                new_days = (new_expire - datetime.now()).days
+                print(f"\n {Color.GREEN}✓ Se sumaron {days_to_add} días{Color.END}")
+                print(f" {Color.CYAN}Nuevo total: {new_days} días{Color.END}")
+                moratech.log_action("admin", f"Días sumados a {username_input}: +{days_to_add}")
             else:
                 print(f" {Color.RED}✗ Los cambios NO fueron aplicados{Color.END}")
-            
-            new_days = (new_expire - datetime.now()).days
-            print(f"\n {Color.GREEN}✓ Se sumaron {days_to_add} días{Color.END}")
-            print(f" {Color.CYAN}Nuevo total: {new_days} días{Color.END}")
-            moratech.log_action("admin", f"Días sumados a {username_input}: +{days_to_add}")
         except:
             print(f" {Color.RED}✗ Valor inválido{Color.END}")
     
@@ -423,7 +427,7 @@ def edit_user():
             print(f" {Color.YELLOW}Operación cancelada{Color.END}")
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
+    
 def show_users():
     """Mostrar usuarios registrados"""
     clear_screen()
