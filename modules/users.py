@@ -480,7 +480,7 @@ def borrar_todos():
         print(f"\n{Color.YELLOW}Operación cancelada.{Color.END}")
     
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-    
+
 def mostrar_users_registrados():
     """Mostrar usuarios registrados"""
     clear_screen()
@@ -953,11 +953,26 @@ def restore_online_chumo():
             confirm = input(f"\n {Color.YELLOW}¿Restaurar estos usuarios? (s/n): {Color.END}").strip().lower()
             
             if confirm == 's':
-                if save_users(users):
-                    print(f"\n {Color.GREEN}✓ Usuarios restaurados correctamente{Color.END}")
-                    moratech.log_action("admin", f"Usuarios restaurados desde: {backup_url}")
-                else:
-                    print(f"\n {Color.RED}✗ Error restaurando usuarios{Color.END}")
+                clear_screen()
+                print_banner()
+                total = len(users)
+                print(f"\n {Color.YELLOW}🚀 Iniciando restauración masiva...{Color.END}")
+                print(f" {Color.CYAN}Procesando {total} usuarios, por favor espera...{Color.END}\n")
+
+                # Restaurar uno a uno para mostrar el progreso "bonito"
+                exitos = 0
+                for i, (username, data) in enumerate(users.items(), 1):
+                    # Creamos un diccionario temporal con un solo usuario para save_users
+                    single_user = {username: data}
+                    # Mostramos el mensaje ANTES de procesar
+                    dias_display = max(0, int((datetime.fromisoformat(data['expires']) - datetime.now()).days))
+                    print(f"\r {Color.YELLOW}Restaurando: {Color.GREEN}{username}{Color.END} [{dias_display} días] ({i}/{total})...{' ' * 10}", end="", flush=True)
+
+                    # Guardamos silenciando la salida de usermod
+                    if save_users(single_user):
+                        exitos += 1
+                print(f"\n\n {Color.GREEN}✓ Proceso finalizado: {exitos} usuarios restaurados.{Color.END}")
+                moratech.log_action("admin", f"Restauración online completada: {exitos} usuarios")
             else:
                 print(f"\n {Color.YELLOW}Restauración cancelada{Color.END}")
         else:
@@ -975,7 +990,7 @@ def restore_online_chumo():
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 def restore_local_chumo():
-    """Restaurar usuarios desde backup local (formato .txt Chumo)"""
+    """Restaurar usuarios desde backup local (formato .txt Chumo) con progreso visual"""
     clear_screen()
     print_banner()
     print_line()
@@ -1022,8 +1037,6 @@ def restore_local_chumo():
             
             # PROCESAR EL ARCHIVO TXT
             users = {}
-            token_config = load_token_config()
-            
             with open(selected_backup, 'r') as f:
                 lines = f.readlines()
 
@@ -1032,62 +1045,67 @@ def restore_local_chumo():
                 if not line: continue
                 parts = line.split(':')
 
-                # Lógica idéntica a restore_online para mantener consistencia
+                # Identificar si es TOKEN o SSH
                 if 'TOKEN' in line and len(parts) >= 5:
-                    token = parts[0]
-                    password = parts[1]
-                    days = int(parts[3])
-                    display_name = parts[4]
-
-                    # Ajuste de días (-1) y Hora (18:00)
+                    token, password, _, days, display_name = parts[0], parts[1], parts[2], int(parts[3]), parts[4]
                     real_days = max(0, days - 1)
                     expire_date = (datetime.now().date() + timedelta(days=real_days))
                     expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
 
                     users[token] = {
-                        "password": password,
-                        "role": "user", "type": "token",
-                        "display_name": display_name,
-                        "created": datetime.now().isoformat(),
-                        "expires": expires,
-                        "max_connections": 1,
-                        "enabled": True
+                        "password": password, "role": "user", "type": "token",
+                        "display_name": display_name, "created": datetime.now().isoformat(),
+                        "expires": expires, "max_connections": 1, "enabled": True
                     }
                 elif len(parts) >= 4:
-                    username = parts[0]
-                    password = parts[1]
-                    max_conn = int(parts[2])
-                    days = int(parts[3])
-
-                    # Ajuste de días (-1) y Hora (18:00)
+                    username, password, max_conn, days = parts[0], parts[1], int(parts[2]), int(parts[3])
                     real_days = max(0, days - 1)
                     expire_date = (datetime.now().date() + timedelta(days=real_days))
                     expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
 
                     users[username] = {
-                        "password": password,
-                        "role": "user", "type": "ssh",
-                        "created": datetime.now().isoformat(),
-                        "expires": expires,
-                        "max_connections": max_conn,
-                        "enabled": True
+                        "password": password, "role": "user", "type": "ssh",
+                        "created": datetime.now().isoformat(), "expires": expires,
+                        "max_connections": max_conn, "enabled": True
                     }
 
-            print(f"\n {Color.CYAN}Usuarios procesados: {len(users)}{Color.END}")
-            confirm = input(f"\n {Color.YELLOW}¿Restaurar ahora? (s/n): {Color.END}").strip().lower()
+            print(f"\n {Color.CYAN}Usuarios listos para restaurar: {len(users)}{Color.END}")
+            confirm = input(f"\n {Color.YELLOW}¿Confirmar restauración local? (s/n): {Color.END}").strip().lower()
             
             if confirm == 's':
-                if save_users(users):
-                    print(f"\n {Color.GREEN}✓ Restauración local completada{Color.END}")
-                else:
-                    print(f"\n {Color.RED}✗ Error al guardar usuarios en el sistema{Color.END}")
+                clear_screen()
+                print_banner()
+                total = len(users)
+                print(f"\n {Color.YELLOW}🔄 Restaurando desde backup local...{Color.END}")
+                print(f" {Color.CYAN}Cargando usuarios en el sistema, espera...{Color.END}\n")
+                
+                exitos = 0
+                for i, (username, data) in enumerate(users.items(), 1):
+                    # Diccionario de un solo usuario para procesar uno a uno
+                    single_user = {username: data}
+                    
+                    # Cálculo de días para el mensaje visual
+                    exp_dt = datetime.fromisoformat(data['expires'])
+                    dias_restantes = max(0, (exp_dt.date() - datetime.now().date()).days)
+                    
+                    # Mensaje dinámico elegante
+                    # <15 ajusta el nombre a la izquierda, >2 ajusta los días a la derecha
+                    print(f"\r {Color.CYAN}Restaurando: {Color.GREEN}{username:<15}{Color.END} | {Color.YELLOW}{dias_restantes:>2} días{Color.END} | ({i}/{total}){' '*5}", end="", flush=True)
+                    
+                    if save_users(single_user):
+                        exitos += 1
+                
+                print(f"\n\n {Color.GREEN}✓ Restauración local finalizada: {exitos}/{total} exitosos.{Color.END}")
+                moratech.log_action("admin", f"Restauración local realizada: {selected_backup.name}")
+            else:
+                print(f"\n {Color.YELLOW}Operación cancelada.{Color.END}")
         else:
-            print(f"\n {Color.RED}✗ Opción fuera de rango{Color.END}")
+            print(f"\n {Color.RED}✗ Opción inválida.{Color.END}")
 
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
     
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    input(f"\n {Color.CYAN}Presiona Enter para volver...{Color.END}")
 
 def list_backups_chumo():
     """Listar backups locales (Formato TXT de Chumo)"""
@@ -1134,6 +1152,7 @@ def list_backups_chumo():
         print(f"\n {Color.RED}✗ Error al listar: {e}{Color.END}")
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
 #menu del checkuser
 
 def menu_checkuser():
