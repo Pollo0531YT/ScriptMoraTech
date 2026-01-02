@@ -93,70 +93,72 @@ def get_system_info():
     return info
 
 def get_active_ports():
-    """Obtiene puertos activos - DETECCIÓN AUTOMÁTICA"""
-    ports = {
-        'SSH': '22',
-        'SSL': '-',
-        'BadVPN': '-',
-        'Proxy': '-',
-        'V2Ray': '-',
-        'SlowDNS': '-'
-    }
+    """Obtiene puertos activos - DETECCIÓN AUTOMÁTICA - Solo muestra activos"""
+    ports = {}
     
     try:
         result = subprocess.run(['ss', '-tulpn'], capture_output=True, text=True)
         output = result.stdout
+        import re
         
         # Detectar SSH
         if ':22 ' in output or ':22\n' in output:
             ports['SSH'] = '22 ✓'
         
-        # Detectar SSL/Stunnel (busca stunnel en proceso)
+        # Detectar SSL/Stunnel - MÚLTIPLES PUERTOS
         stunnel_check = subprocess.run(['pgrep', '-f', 'stunnel'], capture_output=True, text=True)
         if stunnel_check.stdout.strip():
-            # Encontrar puerto de stunnel
+            ssl_ports = []
             for line in output.split('\n'):
                 if 'stunnel' in line:
-                    if ':443 ' in line or ':443\n' in line:
-                        ports['SSL'] = '443 ✓'
-                        break
-                    elif ':444 ' in line or ':444\n' in line:
-                        ports['SSL'] = '444 ✓'
-                        break
-                    # Buscar cualquier puerto
-                    import re
                     match = re.search(r':(\d+)\s', line)
                     if match:
-                        ports['SSL'] = f"{match.group(1)} ✓"
-                        break
+                        ssl_ports.append(match.group(1))
+            if ssl_ports:
+                ports['SSL'] = f"{', '.join(set(ssl_ports))} ✓"
         
-        # Detectar Proxy Python (busca pythonwe o proxy.py)
+        # Detectar Proxy Python - MÚLTIPLES PUERTOS
         proxy_check = subprocess.run(['pgrep', '-f', 'proxy.py'], capture_output=True, text=True)
         if proxy_check.stdout.strip():
-            # Buscar puerto 80
-            if ':80 ' in output or ':80\n' in output:
-                if 'python' in output:
-                    ports['Proxy'] = '80 ✓'
-            # Buscar otros puertos python
+            proxy_ports = []
             for line in output.split('\n'):
-                if 'python' in line.lower():
-                    import re
+                if 'python' in line.lower() and 'proxy' in line:
                     match = re.search(r':(\d+)\s', line)
-                    if match and match.group(1) not in ['22', '443']:
-                        ports['Proxy'] = f"{match.group(1)} ✓"
+                    if match and match.group(1) != '22':
+                        proxy_ports.append(match.group(1))
+            if proxy_ports:
+                ports['Proxy'] = f"{', '.join(set(proxy_ports))} ✓"
+        
+        # Detectar BadVPN - MÚLTIPLES PUERTOS
+        badvpn_check = subprocess.run(['pgrep', '-f', 'badvpn-udpgw'], capture_output=True, text=True)
+        if badvpn_check.stdout.strip():
+            badvpn_ports = []
+            for line in output.split('\n'):
+                if 'badvpn' in line:
+                    match = re.search(r'127\.0\.0\.1:(\d+)', line)
+                    if match:
+                        badvpn_ports.append(match.group(1))
+            if badvpn_ports:
+                ports['BadVPN'] = f"{', '.join(set(badvpn_ports))} ✓"
+        
+        # Detectar V2Ray/3X-UI
+        v2ray_check = subprocess.run(['systemctl', 'is-active', 'x-ui'], capture_output=True, text=True)
+        if 'active' in v2ray_check.stdout:
+            # Buscar puerto (normalmente 54321)
+            for line in output.split('\n'):
+                if 'x-ui' in line or ':54321' in line:
+                    match = re.search(r':(\d+)\s', line)
+                    if match:
+                        ports['V2Ray'] = f"{match.group(1)} ✓"
                         break
+            if 'V2Ray' not in ports:
+                ports['V2Ray'] = '54321 ✓'
         
-        # Detectar BadVPN (puerto 7300/7200)
-        if ':7300 ' in output or ':7300\n' in output:
-            ports['BadVPN'] = '7300 ✓'
-        elif ':7200 ' in output or ':7200\n' in output:
-            ports['BadVPN'] = '7200 ✓'
-        
-        # Detectar SlowDNS (puerto 5300)
+        # Detectar SlowDNS
         if ':5300 ' in output or ':5300\n' in output:
             ports['SlowDNS'] = '5300 ✓'
             
-    except Exception as e:
+    except Exception:
         pass
     
     return ports
@@ -284,19 +286,22 @@ def show_dashboard():
     print(f" Key: {Color.GREEN}Verified{Color.END}【 {Color.YELLOW}MoraTech©{Color.END} 】(V2.0) ► {Color.CYAN}[{info.get('hostname', 'N/A')}]{Color.END}")
     print_line()
     
-    # Puertos en formato de 2 columnas
-    port_list = list(ports.items())
-    for i in range(0, len(port_list), 2):
-        left = port_list[i]
-        right = port_list[i+1] if i+1 < len(port_list) else ("", "")
-        
-        left_status = f"{Color.GREEN}{left[1]}{Color.END}" if '✓' in left[1] else f"{Color.YELLOW}{left[1]}{Color.END}"
-        right_status = f"{Color.GREEN}{right[1]}{Color.END}" if right[1] and '✓' in right[1] else f"{Color.YELLOW}{right[1]}{Color.END}" if right[1] else ""
-        
-        left_text = f" {Color.CYAN}∘{Color.END} {left[0]}: {left_status}"
-        right_text = f"{Color.CYAN}∘{Color.END} {right[0]}: {right_status}" if right[0] else ""
-        
-        print(f"{left_text:<45} {right_text}")
+    # Puertos en formato de 2 columnas - SOLO ACTIVOS
+    if ports:
+        port_list = list(ports.items())
+        for i in range(0, len(port_list), 2):
+            left = port_list[i]
+            right = port_list[i+1] if i+1 < len(port_list) else ("", "")
+            
+            left_status = f"{Color.GREEN}{left[1]}{Color.END}"
+            right_status = f"{Color.GREEN}{right[1]}{Color.END}" if right[1] else ""
+            
+            left_text = f" {Color.CYAN}∘{Color.END} {left[0]}: {left_status}"
+            right_text = f"{Color.CYAN}∘{Color.END} {right[0]}: {right_status}" if right[0] else ""
+            
+            print(f"{left_text:<45} {right_text}")
+    else:
+        print(f" {Color.YELLOW}No hay protocolos activos{Color.END}")
     
     print_line()
     print(f" {Color.CYAN}∘{Color.END} TOTAL: {Color.GREEN}{info.get('ram_total', 'N/A')}{Color.END} {Color.CYAN}∘{Color.END} M|LIBRE: {Color.GREEN}{info.get('ram_free', 'N/A')}{Color.END}  {Color.CYAN}∘{Color.END} EN USO: {Color.GREEN}{info.get('ram_used', 'N/A')}{Color.END}")
