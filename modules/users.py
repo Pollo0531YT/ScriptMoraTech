@@ -1346,12 +1346,21 @@ if __name__ == '__main__':
         
         # Instalar Flask si no está
         print(f"\n {Color.YELLOW}Verificando Flask...{Color.END}")
-        result = subprocess.run(['pip3', 'show', 'flask'], capture_output=True, text=True)
-        
+
+        # Intentar con pip o pip3
+        pip_cmd = 'pip'
+        check_pip = subprocess.run(['which', 'pip'], capture_output=True, text=True)
+        if check_pip.returncode != 0:
+            check_pip3 = subprocess.run(['which', 'pip3'], capture_output=True, text=True)
+            if check_pip3.returncode == 0:
+                pip_cmd = 'pip3'
+
+        result = subprocess.run([pip_cmd, 'show', 'flask'], capture_output=True, text=True)
+
         if result.returncode != 0:
             print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
-            subprocess.run(['pip3', 'install', 'flask', '--break-system-packages'], 
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run([pip_cmd, 'install', 'flask', '--break-system-packages'], 
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
         else:
             print(f" {Color.GREEN}✓ Flask ya instalado{Color.END}")
