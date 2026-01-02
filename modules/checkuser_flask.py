@@ -38,7 +38,7 @@ def check_user():
         log_request(username, "Consulta recibida")
         
         if not username:
-            log_request(username, "Not exist - Empty user")
+            log_request(username, "Sin usuario")
             return "Not exist", 200  # ← SIN jsonify
         
         # Leer usuarios
@@ -46,7 +46,7 @@ def check_user():
             users = json.load(f)
         
         if username not in users:
-            log_request(username, "Not exist")
+            log_request(username, "No existe en lista")
             return "Not exist", 200  # ← SIN jsonify
         
         user_data = users[username]
@@ -54,7 +54,7 @@ def check_user():
         
         if not expires:
             # Usuario sin expiración
-            log_request(username, "No expiry")
+            log_request(username, "Sin expiracion")
             return "Not exist", 200  # ← SIN jsonify
         
         # Parsear fecha de expiración

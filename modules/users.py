@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Módulo SSL - Gestión de Stunnel
+Módulo USUARIOS  - Gestión de USUARIOS
 """
 import time
 import subprocess
@@ -45,13 +45,13 @@ def control_usuarios_menu():
         choice = input(f" {Color.CYAN}►{Color.END} Opción: ").strip()
         
         if choice == '1':
-            add_user()
+            agregar_usuario()
         elif choice == '2':
-            delete_users_menu()
+            menu_borrar_usuarios()
         elif choice == '3':
-            edit_user()
+            editar_usuario()
         elif choice == '4':
-            show_users()
+            mostrar_users_registrados()
         elif choice == '9':
             menu_backup()
         elif choice == '13':
@@ -65,7 +65,7 @@ def control_usuarios_menu():
 
 # ==================== MENÚ DE USUARIOS ====================
 
-def add_user():
+def agregar_usuario():
     """Agregar usuario SSH o Token"""
     clear_screen()
     print_line()
@@ -194,7 +194,7 @@ def add_token_user():
         print(f"\n{Color.RED}✗ Error creando usuario en el sistema{Color.END}")
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
-def edit_user():
+def editar_usuario():
     """Editar o renovar usuario"""
     clear_screen()
     print_banner()
@@ -276,6 +276,7 @@ def edit_user():
                 new_expire = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
 
             users[username_input]['expires'] = new_expire.isoformat()
+            users[username_input]['enabled'] = True
 
             if save_users(users):
                 new_days = (new_expire - datetime.now()).days
@@ -298,6 +299,7 @@ def edit_user():
                 expire_date = (datetime.now().date() + timedelta(days=new_days))
                 new_expire = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
                 users[username_input]['expires'] = new_expire.isoformat()
+                users[username_input]['enabled'] = True
             else:
                 users[username_input]['expires'] = None
             
@@ -342,7 +344,7 @@ def edit_user():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
    
-def delete_users_menu():
+def menu_borrar_usuarios():
     """Menú para eliminar usuarios"""
     while True:
         clear_screen()
@@ -360,17 +362,17 @@ def delete_users_menu():
         choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
         
         if choice == '1':
-            delete_specific_user()
+            borrar_usuario_especifico()
         elif choice == '2':
-            delete_iterative()
+            borrar_iterativo()
         elif choice == '3':
-            delete_expired()
+            borrar_expirados()
         elif choice == '4':
-            delete_all_users()
+            borrar_todos()
         elif choice == '0':
             break
 
-def delete_specific_user():
+def borrar_usuario_especifico():
     """Eliminar usuario específico"""
     users = load_users()
     
@@ -390,7 +392,7 @@ def delete_specific_user():
     
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
-def delete_iterative():
+def borrar_iterativo():
     """Eliminar usuarios uno por uno"""
     users = load_users()
     deleted_users = []
@@ -414,7 +416,7 @@ def delete_iterative():
 
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
-def delete_expired():
+def borrar_expirados():
     """Eliminar solo usuarios caducados"""
     users = load_users()
     deleted = 0
@@ -441,7 +443,7 @@ def delete_expired():
         
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
-def delete_all_users():
+def borrar_todos():
     """Eliminar TODOS los usuarios"""
     print(f"\n{Color.RED}⚠️  ADVERTENCIA: Esto eliminará TODOS los usuarios (excepto admin){Color.END}")
     confirm = input(f"{Color.YELLOW}Escribe 'CONFIRMAR' para continuar: {Color.END}").strip()
@@ -463,7 +465,7 @@ def delete_all_users():
     
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
  
-def show_users():
+def mostrar_users_registrados():
     """Mostrar usuarios registrados"""
     clear_screen()
     print_banner()
@@ -571,6 +573,19 @@ def save_users(users):
                                     capture_output=True, text=True)
             if result.returncode != 0:
                 raise Exception(f"Error actualizando contraseña de {username}: {result.stderr.strip()}")
+            
+            #Asegurar de colocar como ACTIVO
+            expires = data.get('expires')
+            is_enabled = data.get('enabled', True)
+
+            if is_enabled and expires:
+                expire_date = datetime.fromisoformat(expires)
+                if expire_date > datetime.now():
+                    # Desbloquear en el sistema Linux
+                    subprocess.run(['usermod', '-U', username], stderr=subprocess.DEVNULL)
+                    # Asegurar que el shell sea correcto (por si acaso)
+                    subprocess.run(['usermod', '-s', '/bin/false', username], stderr=subprocess.DEVNULL)
+
 
         # 2) Eliminar usuarios del sistema que ya no están en el JSON pero sí estaban en el JSON anterior
         for sys_user in system_users:
