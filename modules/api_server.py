@@ -10,9 +10,11 @@ from functools import wraps
 
 app = Flask(__name__)
 
+# Clave secreta fija
+SECRET_KEY = "moratech-key"
+
 CONFIG_DIR = Path.home() / '.moratech'
 USERS_FILE = CONFIG_DIR / 'users.json'
-API_KEYS_FILE = CONFIG_DIR / 'api_keys.json'
 API_LOG_FILE = CONFIG_DIR / 'api.log'
 TOKEN_CONFIG_FILE = CONFIG_DIR / 'token_config.json'
 
@@ -24,38 +26,12 @@ def log_api_request(endpoint, data, result, api_key=""):
         'endpoint': endpoint,
         'data': data,
         'result': result,
-        'api_key': api_key[:8] + "..." if api_key else "none"
+        'auth': 'valid' if request.headers.get('X-Auth-Key') == SECRET_KEY else 'invalid'
     }
     
     with open(API_LOG_FILE, 'a') as f:
         f.write(json.dumps(log_entry) + "\n")
 
-def load_api_keys():
-    """Cargar API keys"""
-    if not API_KEYS_FILE.exists():
-        return {}
-    with open(API_KEYS_FILE, 'r') as f:
-        return json.load(f)
-
-def require_api_key(f):
-    """Decorator para validar API key"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        api_key = request.headers.get('X-API-Key')
-        
-        if not api_key:
-            log_api_request(request.path, {}, "Missing API Key", "")
-            return jsonify({'error': 'API Key required'}), 401
-        
-        api_keys = load_api_keys()
-        
-        if api_key not in api_keys.values():
-            log_api_request(request.path, {}, "Invalid API Key", api_key)
-            return jsonify({'error': 'Invalid API Key'}), 401
-        
-        return f(*args, **kwargs)
-    
-    return decorated_function
 
 def load_users():
     """Cargar usuarios"""
@@ -114,6 +90,24 @@ def save_token_config(config):
     with open(TOKEN_CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=4)
 
+def require_auth(f):
+    """Decorator para validar clave secreta"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        auth_key = request.headers.get('X-Auth-Key')
+        
+        if not auth_key:
+            log_api_request(request.path, {}, "Missing Auth Key", "")
+            return jsonify({'error': 'Auth Key required'}), 401
+        
+        if auth_key != SECRET_KEY:
+            log_api_request(request.path, {}, "Invalid Auth Key", auth_key)
+            return jsonify({'error': 'Invalid Auth Key'}), 401
+        
+        return f(*args, **kwargs)
+    
+    return decorated_function
+
 # ==================== ENDPOINTS ====================
 
 @app.route('/')
@@ -121,7 +115,7 @@ def home():
     return "MORATECH API - Sistema de gestión de usuarios", 200
 
 @app.route('/api/status', methods=['GET'])
-@require_api_key
+@require_auth
 def api_status():
     """Estado del sistema"""
     users = load_users()
@@ -136,7 +130,7 @@ def api_status():
     return jsonify(result), 200
 
 @app.route('/api/agregar', methods=['POST'])
-@require_api_key
+@require_auth  
 def api_agregar_ssh():
     """Agregar usuario SSH"""
     try:
@@ -193,7 +187,7 @@ def api_agregar_ssh():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/token', methods=['POST'])
-@require_api_key
+@require_auth  
 def api_agregar_token():
     """Agregar usuario TOKEN"""
     try:
@@ -258,7 +252,7 @@ def api_agregar_token():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/renovar', methods=['POST'])
-@require_api_key
+@require_auth  
 def api_renovar():
     """Renovar usuario (sumar días)"""
     try:
@@ -318,7 +312,7 @@ def api_renovar():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/reiniciar', methods=['POST'])
-@require_api_key
+@require_auth  
 def api_reiniciar():
     """Reiniciar días de usuario"""
     try:
@@ -364,7 +358,7 @@ def api_reiniciar():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/borrar', methods=['POST'])
-@require_api_key
+@require_auth  
 def api_borrar():
     """Eliminar usuario"""
     try:

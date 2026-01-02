@@ -1469,6 +1469,7 @@ def menu_api_server():
             port = "9000"
         
         print(f"\n {Color.GREEN}✓ Servidor API activo en puerto {port}{Color.END}")
+        print(f" {Color.CYAN}Clave: {Color.GREEN}moratech-key{Color.END}")
         
         # Obtener IP
         try:
@@ -1480,15 +1481,12 @@ def menu_api_server():
             pass
         
         print_line()
-        print(f" {Color.GREEN}[1]{Color.END} ➮ Ver API Keys")
-        print(f" {Color.GREEN}[2]{Color.END} ➮ Generar nueva API Key")
-        print(f" {Color.GREEN}[3]{Color.END} ➮ Ver logs")
-        print(f" {Color.GREEN}[4]{Color.END} ➮ Detener servidor")
+        print(f" {Color.GREEN}[1]{Color.END} ➮ Ver logs")
+        print(f" {Color.GREEN}[2]{Color.END} ➮ Detener servidor")
     else:
         print(f"\n {Color.YELLOW}Servidor detenido{Color.END}")
         print_line()
         print(f" {Color.GREEN}[1]{Color.END} ➮ Iniciar servidor API")
-        print(f" {Color.GREEN}[2]{Color.END} ➮ Configurar API Keys")
     
     print_line()
     print(f" {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}Volver{Color.END}")
@@ -1498,23 +1496,15 @@ def menu_api_server():
     
     if choice == '1':
         if is_running:
-            view_api_keys()
+            view_api_logs()
         else:
             start_api_server()
-    elif choice == '2':
-        if is_running:
-            generate_api_key()
-        else:
-            manage_api_keys()
-    elif choice == '3' and is_running:
-        view_api_logs()
-    elif choice == '4' and is_running:
+    elif choice == '2' and is_running:
         stop_api_server()
     elif choice == '0':
         return
     else:
         menu_api_server()
-
 
 def start_api_server():
     """Iniciar servidor API"""
@@ -1589,8 +1579,6 @@ def start_api_server():
         print(f" {Color.CYAN}Puerto: {Color.GREEN}{port}{Color.END}")
         print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/api/{Color.END}")
         
-        print(f"\n {Color.YELLOW}⚠️  IMPORTANTE: Configura tus API Keys en opción [2]{Color.END}")
-        
         moratech.log_action("admin", f"API Server iniciado en puerto {port}")
         
     except Exception as e:
@@ -1625,97 +1613,6 @@ def stop_api_server():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     menu_api_server()
-
-
-def manage_api_keys():
-    """Gestionar API Keys"""
-    clear_screen()
-    print_banner()
-    print_line()
-    print(f" {Color.CYAN}GESTIÓN DE API KEYS{Color.END}")
-    print_line()
-    
-    api_keys_file = CONFIG_DIR / 'api_keys.json'
-    
-    if not api_keys_file.exists():
-        print(f"\n {Color.YELLOW}No hay API Keys configuradas{Color.END}")
-        print(f"\n {Color.GREEN}Creando API Key inicial...{Color.END}")
-        
-        import secrets
-        api_key = secrets.token_urlsafe(32)
-        
-        api_keys = {
-            "main": api_key
-        }
-        
-        with open(api_keys_file, 'w') as f:
-            json.dump(api_keys, f, indent=4)
-        
-        print(f"\n {Color.GREEN}✓ API Key creada:{Color.END}")
-        print(f" {Color.CYAN}Nombre: {Color.YELLOW}main{Color.END}")
-        print(f" {Color.CYAN}Key: {Color.GREEN}{api_key}{Color.END}")
-        
-        print(f"\n {Color.YELLOW}⚠️  Guarda esta clave de forma segura!{Color.END}")
-    else:
-        print(f"\n {Color.GREEN}API Keys existentes:{Color.END}\n")
-        
-        with open(api_keys_file, 'r') as f:
-            api_keys = json.load(f)
-        
-        for name, key in api_keys.items():
-            print(f" {Color.CYAN}{name}: {Color.GREEN}{key}{Color.END}")
-    
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-    menu_api_server()
-
-
-def view_api_keys():
-    """Ver API Keys"""
-    manage_api_keys()
-
-
-def generate_api_key():
-    """Generar nueva API Key"""
-    clear_screen()
-    print_banner()
-    print_line()
-    print(f" {Color.CYAN}GENERAR NUEVA API KEY{Color.END}")
-    print_line()
-    
-    name = input(f"\n {Color.GREEN}Nombre para la API Key: {Color.END}").strip()
-    
-    if not name:
-        print(f" {Color.RED}✗ Nombre requerido{Color.END}")
-        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-        return
-    
-    api_keys_file = CONFIG_DIR / 'api_keys.json'
-    
-    if api_keys_file.exists():
-        with open(api_keys_file, 'r') as f:
-            api_keys = json.load(f)
-    else:
-        api_keys = {}
-    
-    import secrets
-    api_key = secrets.token_urlsafe(32)
-    
-    api_keys[name] = api_key
-    
-    with open(api_keys_file, 'w') as f:
-        json.dump(api_keys, f, indent=4)
-    
-    print(f"\n {Color.GREEN}✓ API Key creada:{Color.END}")
-    print(f" {Color.CYAN}Nombre: {Color.YELLOW}{name}{Color.END}")
-    print(f" {Color.CYAN}Key: {Color.GREEN}{api_key}{Color.END}")
-    
-    print(f"\n {Color.YELLOW}⚠️  Guarda esta clave de forma segura!{Color.END}")
-    
-    moratech.log_action("admin", f"API Key generada: {name}")
-    
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-    menu_api_server()
-
 
 def view_api_logs():
     """Ver logs del API"""
