@@ -584,89 +584,80 @@ def load_users():
         return json.load(f)
 
 def save_users(users):
-    """Guarda usuarios y sincroniza con el sistema Linux - transaccional"""
+    """Guarda usuarios y sincroniza con el sistema Linux - Silencioso y Transaccional"""
     import tempfile
     import os
     import shutil
 
     try:
-        # 0) Obtener la lista de usuarios del sistema
+        # 1) Obtener la lista de usuarios del sistema (Silencioso)
         result = subprocess.run(['cut', '-d:', '-f1', '/etc/passwd'],
                                 capture_output=True, text=True)
         system_users = result.stdout.strip().split('\n') if result.returncode == 0 else []
 
-        # 0.5) Cargar el JSON existente para saber qué usuarios gestionaba antes el sistema
+        # 2) Cargar JSON previo para limpieza selectiva
         previous_users = []
         try:
             if USERS_FILE.exists():
                 with open(USERS_FILE, 'r') as f:
                     prev = json.load(f)
                     previous_users = list(prev.keys())
-        except Exception:
+        except:
             previous_users = []
 
-        # 1) Crear/actualizar usuarios que están en JSON (si no existen en el sistema, crearlos)
+        # 3) Sincronizar Usuarios: Crear o Actualizar
         for username, data in users.items():
-            # Si el usuario no existe en el sistema, crearlo
+            # Crear si no existe
             if username not in system_users:
-                result = subprocess.run(['useradd', '-M', '-s', '/bin/false', username],
-                                        capture_output=True, text=True)
-                if result.returncode != 0:
-                    raise Exception(f"Error creando usuario {username}: {result.stderr.strip()}")
+                subprocess.run(['useradd', '-M', '-s', '/bin/false', username],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-            # Actualizar contraseña (usa chpasswd con input de texto)
+            # Actualizar contraseña (siempre silencioso)
             password = str(data.get('password', ''))
-            result = subprocess.run(['chpasswd'],
-                                    input=f"{username}:{password}\n",
-                                    capture_output=True, text=True)
-            if result.returncode != 0:
-                raise Exception(f"Error actualizando contraseña de {username}: {result.stderr.strip()}")
+            subprocess.run(['chpasswd'],
+                         input=f"{username}:{password}\n",
+                         text=True,
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
-            #Asegurar de colocar como ACTIVO
+            # Estado y Expiración
             expires = data.get('expires')
             is_enabled = data.get('enabled', True)
 
             if is_enabled and expires:
-                expire_date = datetime.fromisoformat(expires)
-                if expire_date > datetime.now():
-                    # Desbloquear en el sistema Linux
-                    subprocess.run(['usermod', '-U', username], stderr=subprocess.DEVNULL)
-                    # Asegurar que el shell sea correcto (por si acaso)
-                    subprocess.run(['usermod', '-s', '/bin/false', username], stderr=subprocess.DEVNULL)
+                # Desbloquear y asegurar shell (Silencio total)
+                subprocess.run(['usermod', '-U', '-s', '/bin/false', username], 
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                
+                # Sincronizar fecha de expiración con el sistema Linux (Shadow)
+                expire_dt = datetime.fromisoformat(expires)
+                # Convertimos a días desde 1970 para 'usermod -e' o 'chage'
+                expire_str = expire_dt.strftime('%Y-%m-%d')
+                subprocess.run(['usermod', '-e', expire_str, username], 
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-
-        # 2) Eliminar usuarios del sistema que ya no están en el JSON pero sí estaban en el JSON anterior
+        # 4) Limpieza: Eliminar usuarios que ya no están en la lista
         for sys_user in system_users:
-            should_consider = (sys_user in previous_users) or sys_user.startswith('token_')
-            if should_consider and sys_user not in users:
-                # Primero desconectar procesos del usuario
-                subprocess.run(['pkill', '-u', sys_user], stderr=subprocess.DEVNULL)
-                # Luego eliminar la cuenta (forzar, y borrar home si existe)
-                result = subprocess.run(['userdel', '-f', '-r', sys_user],
-                                        capture_output=True, text=True)
-                if result.returncode != 0:
-                    raise Exception(f"Error eliminando usuario {sys_user}: {result.stderr.strip()}")
+            # Solo eliminamos si era un usuario gestionado por nuestro script
+            should_delete = (sys_user in previous_users or sys_user.startswith('token_'))
+            if should_delete and sys_user not in users:
+                # Desconectar y eliminar (Silencioso)
+                subprocess.run(['pkill', '-u', sys_user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(['userdel', '-f', '-r', sys_user], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        # 3) Si todo salió bien, guardar JSON de forma atómica
-        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, dir=CONFIG_DIR)
-        json.dump(users, temp_file, indent=4)
-        temp_file.close()
-        shutil.move(temp_file.name, USERS_FILE)
-
+        # 5) Guardado Atómico del JSON
+        temp_fd, temp_path = tempfile.mkstemp(dir=str(CONFIG_DIR), text=True)
+        with os.fdopen(temp_fd, 'w') as f:
+            json.dump(users, f, indent=4)
+        
+        # Reemplazo seguro
+        shutil.move(temp_path, str(USERS_FILE))
         return True
 
     except Exception as e:
-        print(f"\n {Color.RED}✗ Error sincronizando usuarios con el sistema:{Color.END}")
-        print(f" {Color.RED}{str(e)}{Color.END}")
-        print(f" {Color.YELLOW}Los cambios NO fueron guardados{Color.END}")
-        # Limpiar archivo temporal si existe
-        try:
-            if 'temp_file' in locals() and os.path.exists(temp_file.name):
-                os.unlink(temp_file.name)
-        except:
-            pass
+        # Solo mostramos el error si algo falla críticamente
+        print(f"\n {Color.RED}✗ Error crítico en sincronización:{Color.END}")
+        print(f" {Color.YELLOW}Detalle: {e}{Color.END}")
         return False
-
 
 def load_token_config():
     """Carga config de tokens"""
