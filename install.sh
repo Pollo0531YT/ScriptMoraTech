@@ -37,7 +37,7 @@ fi
 echo -e "${GREEN}Iniciando instalación de Moratech...${NC}\n"
 
 # 1. Verificar Python3
-echo -e "${YELLOW}[1/5] Verificando Python3...${NC}"
+echo -e "${YELLOW}[1/6] Verificando Python3...${NC}"
 if ! command -v python3 &> /dev/null; then
     echo -e "${RED}Python3 no está instalado. Instalando...${NC}"
     apt-get update
@@ -46,37 +46,41 @@ else
     echo -e "${GREEN}✓ Python3 ya está instalado${NC}"
 fi
 
-# 2. Copiar el script principal
-echo -e "${YELLOW}[2/5] Copiando archivos del sistema...${NC}"
-INSTALL_DIR="/usr/local/bin"
-cp moratech.py "$INSTALL_DIR/moratech"
-chmod +x "$INSTALL_DIR/moratech"
-echo -e "${GREEN}✓ Archivos copiados a $INSTALL_DIR${NC}"
+# 2. Crear directorio de instalación
+echo -e "${YELLOW}[2/6] Creando directorios...${NC}"
+INSTALL_DIR="/usr/local/lib/moratech"
+mkdir -p "$INSTALL_DIR"
+echo -e "${GREEN}✓ Directorio creado en $INSTALL_DIR${NC}"
 
-# 3. Crear directorio de configuración
-echo -e "${YELLOW}[3/5] Creando directorios de configuración...${NC}"
-# El directorio se creará automáticamente cuando se ejecute por primera vez
-echo -e "${GREEN}✓ Configuración lista${NC}"
+# 3. Copiar archivos
+echo -e "${YELLOW}[3/6] Copiando archivos del sistema...${NC}"
+cp moratech.py "$INSTALL_DIR/"
+cp -r modules "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR/moratech.py"
+echo -e "${GREEN}✓ Archivos copiados${NC}"
 
-# 4. Verificar permisos
-echo -e "${YELLOW}[4/5] Configurando permisos...${NC}"
-chmod 755 "$INSTALL_DIR/moratech"
+# 4. Crear comando moratech
+echo -e "${YELLOW}[4/6] Creando comando moratech...${NC}"
+cat > /usr/local/bin/moratech << 'EOF'
+#!/bin/bash
+cd /usr/local/lib/moratech
+exec python3 moratech.py "$@"
+EOF
+chmod +x /usr/local/bin/moratech
+echo -e "${GREEN}✓ Comando moratech creado${NC}"
+
+# 5. Verificar permisos
+echo -e "${YELLOW}[5/6] Configurando permisos...${NC}"
+chmod -R 755 "$INSTALL_DIR"
 echo -e "${GREEN}✓ Permisos configurados${NC}"
 
-# 5. Finalizar
-echo -e "${YELLOW}[5/5] Finalizando instalación...${NC}"
+# 6. Finalizar
+echo -e "${YELLOW}[6/6] Finalizando instalación...${NC}"
 
 echo ""
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}         ✓ ¡MORATECH INSTALADO CORRECTAMENTE!${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════════════════${NC}"
 echo ""
-echo -e "${PURPLE}Para iniciar Moratech, simplemente escribe:${NC}"
-echo -e "${YELLOW}    moratech${NC}"
-echo ""
-echo -e "${PURPLE}Credenciales por defecto:${NC}"
-echo -e "${YELLOW}    Usuario: admin${NC}"
-echo -e "${YELLOW}    Contraseña: admin123${NC}"
-echo ""
-echo -e "${RED}⚠ IMPORTANTE: Cambia la contraseña después del primer login${NC}"
+echo -e "${YELLOW}Para ejecutar, escribe: ${GREEN}moratech${NC}"
 echo ""
