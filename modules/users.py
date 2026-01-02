@@ -2,6 +2,7 @@
 """
 Módulo SSL - Gestión de Stunnel
 """
+import time
 import subprocess
 import json
 from datetime import datetime, timedelta
@@ -1272,6 +1273,14 @@ from pathlib import Path
 
 app = Flask(__name__)
 
+@app.route('/')
+def home():
+    return "CheckUser MoraTech funcionando!", 200
+
+@app.route('/checkUser', methods=['GET'])
+def check_user_info():
+    return "CheckUser MoraTech - Use POST method with JSON: {'user': 'username'}", 200
+
 CONFIG_DIR = Path.home() / '.moratech'
 USERS_FILE = CONFIG_DIR / 'users.json'
 LOG_FILE = CONFIG_DIR / 'checkuser.log'
@@ -1388,8 +1397,24 @@ if __name__ == '__main__':
         # Iniciar servidor en screen
         subprocess.run([
             'screen', '-dmS', 'moratech_checkuser',
-            'python3', str(flask_script)
+            'bash', '-c', f'cd {CONFIG_DIR} && python3 {flask_script}'
         ])
+
+        # Esperar a que inicie
+        time.sleep(2)
+
+        # Verificar si está corriendo
+        check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+        if 'moratech_checkuser' not in check.stdout:
+            print(f"\n {Color.RED}✗ El servidor no pudo iniciar{Color.END}")
+            print(f" {Color.YELLOW}Verificando error...{Color.END}")
+            
+            # Intentar ejecutar directamente para ver el error
+            result = subprocess.run(['python3', str(flask_script)], 
+                                capture_output=True, text=True, timeout=5)
+            if result.stderr:
+                print(f" {Color.RED}{result.stderr}{Color.END}")
+            return
         
         # Guardar puerto
         port_file = CONFIG_DIR / 'checkuser_port.txt'
