@@ -218,8 +218,14 @@ def init_system():
                 "proxy": {"enabled": False, "port": 80},
                 "badvpn": {"enabled": False, "port": 7300}
             }, f, indent=4)
-
-
+    
+    # Configurar sistema de expiración automática
+    try:
+        from modules import expire_setup
+        expire_setup.setup_expire_system()
+    except Exception as e:
+        pass  # No es crítico, continuar
+     
 def log_action(user, action):
     """Registra acción en logs"""
     with open(LOGS_FILE, 'r') as f:

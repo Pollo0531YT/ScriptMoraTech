@@ -330,7 +330,10 @@ def edit_user():
         if confirm == 's':
             del users[username_input]
             if save_users(users):
-                print(f"\n {Color.GREEN}✓ Usuario eliminado{Color.END}")
+                # Desconectar usuario
+                subprocess.run(['pkill', '-u', username_input], stderr=subprocess.DEVNULL)
+
+                print(f"\n {Color.GREEN}✓ Usuario eliminado y desconectado{Color.END}")
                 moratech.log_action("admin", f"Usuario eliminado: {username_input}")
             else:
                 print(f" {Color.RED}✗ Error eliminando usuario{Color.END}")
@@ -376,8 +379,10 @@ def delete_specific_user():
     if username in users:
         del users[username]
         if save_users(users):
+            # Desconectar usuario inmediatamente
+            subprocess.run(['pkill', '-u', username], stderr=subprocess.DEVNULL)
             moratech.log_action("admin", f"Usuario eliminado: {username}")
-            print(f"{Color.GREEN}✓ Usuario eliminado{Color.END}")
+            print(f"{Color.GREEN}✓ Usuario eliminado y desconectado{Color.END}")
         else:
             print(f"{Color.RED}✗ Error eliminando usuario del sistema{Color.END}")
     else:
@@ -392,13 +397,19 @@ def delete_iterative():
     for username in list(users.keys()):
         print(f"\n{Color.YELLOW}Usuario: {username}{Color.END}")
         confirm = input(f"¿Eliminar? (s/n): ").strip().lower()
-        
+
+        deleted_users = []
         if confirm == 's':
+            deleted_users.append(username)
             del users[username]
             print(f"{Color.GREEN}✓ Marcado para eliminar{Color.END}")
 
-    if save_users(users):
-        print(f"\n{Color.GREEN}✓ Cambios guardados{Color.END}")
+        if save_users(users):
+            # Desconectar usuarios eliminados
+            for user in deleted_users:
+                subprocess.run(['pkill', '-u', user], stderr=subprocess.DEVNULL)
+
+            print(f"\n{Color.GREEN}✓ Cambios guardados{Color.END}")
     else:
         print(f"\n{Color.RED}✗ Error guardando cambios{Color.END}")
 
@@ -413,13 +424,19 @@ def delete_expired():
         user_data = users[username]
         if user_data.get('expires'):
             expire_date = datetime.fromisoformat(user_data['expires'])
+            deleted_users = []
             if datetime.now() > expire_date:
+                deleted_users.append(username)
                 del users[username]
                 deleted += 1
                 print(f"{Color.GREEN}✓ Eliminado: {username}{Color.END}")
     
-    if save_users(users):
-        print(f"\n{Color.YELLOW}Total eliminados: {deleted}{Color.END}")
+        if save_users(users):
+            # Desconectar usuarios eliminados
+            for user in deleted_users:
+                subprocess.run(['pkill', '-u', user], stderr=subprocess.DEVNULL)
+
+            print(f"\n{Color.YELLOW}Total eliminados: {deleted}{Color.END}")
     else:
         print(f"\n{Color.RED}✗ Error guardando cambios{Color.END}")
         
@@ -431,8 +448,15 @@ def delete_all_users():
     confirm = input(f"{Color.YELLOW}Escribe 'CONFIRMAR' para continuar: {Color.END}").strip()
     
     if confirm == "CONFIRMAR":
+        # Guardar lista de usuarios antes de borrar
+        users_to_kill = list(users.keys())
+
         users = {}
         if save_users(users):
+            # Desconectar todos los usuarios
+            for user in users_to_kill:
+                subprocess.run(['pkill', '-u', user], stderr=subprocess.DEVNULL)
+                
             moratech.log_action("admin", "Todos los usuarios eliminados")
             print(f"{Color.GREEN}✓ Todos los usuarios eliminados{Color.END}")
         else:
