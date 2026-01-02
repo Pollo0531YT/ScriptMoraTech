@@ -273,39 +273,6 @@ def show_dashboard():
     print(f" {Color.CYAN}∘{Color.END} U/RAM: {Color.GREEN}{info.get('ram_percent', 'N/A')}{Color.END}  {Color.CYAN}∘{Color.END} U/CPU: {Color.GREEN}{info.get('cpu_percent', 'N/A')}{Color.END}")
     print_line()
 
-def login():
-    """Sistema de login"""
-    clear_screen()
-    print_banner()
-    print_line()
-    print(f" {Color.CYAN}INICIO DE SESIÓN{Color.END}")
-    print_line()
-    
-    users = load_users()
-    max_attempts = 3
-    
-    for attempt in range(max_attempts):
-        # Usuario visible
-        username = input(f"\n {Color.GREEN}Usuario:{Color.END} ").strip()
-        
-        # Contraseña visible
-        password = input(f" {Color.GREEN}Contraseña:{Color.END} ").strip()
-        
-        
-        if username in users and users[username]['password'] == password:
-            print(f"\n {Color.GREEN}✓ Login exitoso!{Color.END}")
-            log_action(username, "Login exitoso")
-            import time
-            time.sleep(1)
-            return username
-        else:
-            remaining = max_attempts - attempt - 1
-            if remaining > 0:
-                print(f" {Color.RED}✗ Credenciales incorrectas. Intentos restantes: {remaining}{Color.END}")
-    
-    return None
-    
-    return None
 
 def load_users():
     """Carga usuarios"""
