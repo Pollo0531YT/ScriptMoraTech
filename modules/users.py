@@ -444,27 +444,43 @@ def borrar_expirados():
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def borrar_todos():
-    """Eliminar TODOS los usuarios"""
+    """Eliminar TODOS los usuarios con barra de progreso"""
     print(f"\n{Color.RED}⚠️  ADVERTENCIA: Esto eliminará TODOS los usuarios (excepto admin){Color.END}")
     confirm = input(f"{Color.YELLOW}Escribe 'CONFIRMAR' para continuar: {Color.END}").strip()
     
     if confirm == "CONFIRMAR":
-        # Guardar lista de usuarios antes de borrar
+        # Cargar usuarios actuales
         users = load_users()
-        users_to_kill = list(users.keys())
+        users_to_kill = [u for u in users.keys() if u != "admin"] # Protegemos al admin
+        total = len(users_to_kill)
 
+        if total == 0:
+            print(f"\n{Color.YELLOW}No hay usuarios para eliminar.{Color.END}")
+            input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+            return
+
+        print(f"\n{Color.YELLOW}🔄 Iniciando limpieza masiva...{Color.END}")
+        print(f"{Color.CYAN}Borrando {total} usuarios, por favor espera...{Color.END}\n")
+
+        # 1. Limpiar el archivo JSON y sistema primero
         if save_users({}):
-            # Desconectar todos los usuarios
-            for user in users_to_kill:
+            # 2. Desconectar usuarios uno por uno con contador
+            for i, user in enumerate(users_to_kill, 1):
+                # Borrar procesos del usuario
                 subprocess.run(['pkill', '-u', user], stderr=subprocess.DEVNULL)
                 
-            moratech.log_action("admin", "Todos los usuarios eliminados")
-            print(f"{Color.GREEN}✓ Todos los usuarios eliminados{Color.END}")
+                # Efecto visual de carga en la misma línea
+                print(f"\r {Color.YELLOW}Eliminando: {i}/{total} [{user}]...{' ' * 10}", end="", flush=True)
+            
+            print(f"\n\n{Color.GREEN}✓ {total} usuarios eliminados y desconectados correctamente.{Color.END}")
+            moratech.log_action("admin", f"Eliminación masiva: {total} usuarios borrados")
         else:
-            print(f"{Color.RED}✗ Error eliminando usuarios del sistema{Color.END}")
+            print(f"\n{Color.RED}✗ Error crítico: No se pudo limpiar la base de datos.{Color.END}")
+    else:
+        print(f"\n{Color.YELLOW}Operación cancelada.{Color.END}")
     
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
- 
+    
 def mostrar_users_registrados():
     """Mostrar usuarios registrados"""
     clear_screen()
