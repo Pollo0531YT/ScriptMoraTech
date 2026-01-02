@@ -444,7 +444,7 @@ def show_users():
             # Mostrar nombre visible para tokens
             if user_type == 'token':
                 display_name = data.get('display_name', username)
-                user_label = f"{display_name} (token)"
+                user_label = f"{display_name} ({username})"
             else:
                 user_label = f"{username} (ssh)"
             
