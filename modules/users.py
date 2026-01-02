@@ -54,7 +54,7 @@ def control_usuarios_menu():
         elif choice == '4':
             mostrar_users_registrados()
         elif choice == '5':
-            mostrar_users_registrados()
+            info_exacta_usuario()
         elif choice == '9':
             menu_backup()
         elif choice == '13':
