@@ -7,7 +7,11 @@ from modules.common import Color, print_line, print_banner, clear_screen
 
 SLOW_DIR = "/etc/slowdns"
 SERVER_BIN = f"{SLOW_DIR}/sldns-server"
+KEY_FILE = f"{SLOW_DIR}/server.key"
 CONFIG_FILE = f"{SLOW_DIR}/mora_conf.json"
+
+# Tu Llave Privada del VPS1 (Sincronizada)
+MASTER_PRIV = "b17a4ce4c0e8cc54e33ee70b5e5a11c1a3ba853fd3743897ee091f9fcb53f0e2"
 
 def save_config(ns, port):
     with open(CONFIG_FILE, 'w') as f:
@@ -15,95 +19,86 @@ def save_config(ns, port):
 
 def get_config():
     if os.path.exists(CONFIG_FILE):
-        with open(CONFIG_FILE, 'r') as f:
-            return json.load(f)
+        with open(CONFIG_FILE, 'r') as f: return json.load(f)
     return {'ns': 'No configurado', 'port': '22'}
 
 def get_current_pubkey():
-    """Extrae la llave pública actual directamente del proceso en ejecución"""
     try:
-        # Volcamos el log actual de screen a un archivo temporal
         os.system("screen -S slowdns -X hardcopy /tmp/sldns.log")
         if os.path.exists("/tmp/sldns.log"):
             with open("/tmp/sldns.log", "r") as f:
                 content = f.read()
-                # Buscamos el patrón de la pubkey (64 caracteres hexadecimales)
                 match = re.search(r"pubkey ([a-f0-9]{64})", content)
-                if match:
-                    return match.group(1)
-    except:
-        pass
-    return "No detectada (¿Está el servicio activo?)"
+                if match: return match.group(1)
+    except: pass
+    return "Cargando..."
 
 def install_slowdns():
     clear_screen()
     print_banner()
     os.makedirs(SLOW_DIR, exist_ok=True)
     
-    print(f" {Color.YELLOW}Limpiando servicios y procesos...{Color.END}")
+    print(f" {Color.YELLOW}Deteniendo procesos previos...{Color.END}")
     os.system("pkill -f sldns-server")
-    os.system("iptables -F")
-    os.system("iptables -t nat -F")
+    os.system("fuser -k 53/udp > /dev/null 2>&1")
+
+    # Escribir la llave del VPS1 en el archivo local
+    with open(KEY_FILE, "w") as f:
+        f.write(MASTER_PRIV)
     
     if not os.path.exists(SERVER_BIN):
+        print(f" {Color.CYAN}Descargando binario optimizado...{Color.END}")
         url = "https://raw.githubusercontent.com/NevermoreSSH/hopp/main/slowdns/sldns-server"
         os.system(f"wget -q -O {SERVER_BIN} {url}")
         os.system(f"chmod +x {SERVER_BIN}")
 
-    # Configuración de Red
-    os.system("systemctl stop systemd-resolved > /dev/null 2>&1")
-    os.system("systemctl disable systemd-resolved > /dev/null 2>&1")
-    os.system("iptables -A INPUT -p udp --dport 5300 -j ACCEPT")
-    os.system("iptables -t nat -A PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300")
+    # --- CONFIGURACIÓN DE RED (IPtables) ---
+    os.system("iptables -F && iptables -t nat -F")
+    os.system("iptables -I INPUT -p udp --dport 5300 -j ACCEPT")
+    os.system("iptables -t nat -I PREROUTING -p udp --dport 53 -j REDIRECT --to-ports 5300")
     
+    # Reglas de Forwarding (Navegación)
+    os.system("echo 1 > /proc/sys/net/ipv4/ip_forward")
+    os.system("iptables -t nat -A POSTROUTING -j MASQUERADE")
+    os.system("iptables -A FORWARD -j ACCEPT")
+
     ns_domain = input(f"\n {Color.GREEN}Ingresa tu NS Domain: {Color.END}").strip()
-    l_port = input(f" {Color.GREEN}Puerto Local (SSH/SSL) [22]: {Color.END}").strip() or "22"
+    l_port = input(f" {Color.GREEN}Puerto Local de Destino (ej. 22): {Color.END}").strip() or "22"
     
     save_config(ns_domain, l_port)
     
-    # EJECUCIÓN SIN LLAVES (Dejamos que el binario genere la suya)
-    cmd = f"screen -dmS slowdns {SERVER_BIN} -udp :5300 {ns_domain} 127.0.0.1:{l_port}"
+    # Lanzar el servidor con Screen
+    cmd = f"screen -dmS slowdns {SERVER_BIN} -udp :5300 -privkey-file {KEY_FILE} {ns_domain} 127.0.0.1:{l_port}"
     os.system(cmd)
 
-    print(f"\n {Color.GREEN}✓ Instalado. El binario generará una Key propia.{Color.END}")
-    print(f" {Color.YELLOW}Espera 5 segundos y revisa 'Ver Info'.{Color.END}")
-    time.sleep(3)
+    print(f"\n {Color.GREEN}✓ SlowDNS sincronizado con la llave del VPS1.{Color.END}")
+    print(f" {Color.YELLOW}Puerto local configurado: {l_port}{Color.END}")
+    time.sleep(2)
 
 def view_info():
     clear_screen()
     print_banner()
     conf = get_config()
-    current_key = get_current_pubkey()
-    
-    print(f" {Color.CYAN}INFORMACIÓN DE CONEXIÓN ACTUAL{Color.END}")
+    pub = get_current_pubkey()
+    print(f" {Color.CYAN}CONFIGURACIÓN DE ESPEJO ACTIVA{Color.END}")
     print_line()
-    print(f" {Color.WHITE}NS Domain:   {Color.YELLOW}{conf['ns']}{Color.END}")
-    print(f" {Color.WHITE}Public Key:  {Color.GREEN}{current_key}{Color.END}")
-    print(f" {Color.WHITE}Puerto Local: {Color.YELLOW}{conf['port']}{Color.END}")
-    print(f" {Color.WHITE}Puerto DNS:   {Color.YELLOW}53 / 5300{Color.END}")
+    print(f" {Color.WHITE}NS Domain:    {Color.YELLOW}{conf['ns']}{Color.END}")
+    print(f" {Color.WHITE}Public Key:   {Color.GREEN}{pub}{Color.END}")
+    print(f" {Color.WHITE}Puerto Destino: {Color.YELLOW}{conf['port']}{Color.END}")
+    print(f" {Color.WHITE}Puerto DNS:    {Color.YELLOW}53 / 5300{Color.END}")
     print_line()
-    print(f" {Color.GRAY}Nota: Si la Key no aparece, espera unos segundos y vuelve a entrar.{Color.END}")
     input(f"\n {Color.CYAN}Presiona Enter para volver...{Color.END}")
 
 def restart_service():
     conf = get_config()
     if conf['ns'] == 'No configurado':
-        print(f" {Color.RED}Error: Primero debes instalar.{Color.END}")
+        print(f" {Color.RED}Error: Ejecuta la instalación primero.{Color.END}")
         time.sleep(2); return
-        
     os.system("pkill -f sldns-server")
-    cmd = f"screen -dmS slowdns {SERVER_BIN} -udp :5300 {conf['ns']} 127.0.0.1:{conf['port']}"
+    cmd = f"screen -dmS slowdns {SERVER_BIN} -udp :5300 -privkey-file {KEY_FILE} {conf['ns']} 127.0.0.1:{conf['port']}"
     os.system(cmd)
-    print(f" {Color.GREEN}Servicio Reiniciado (Nueva Key generada).{Color.END}")
+    print(f" {Color.GREEN}Servicio Reiniciado en puerto {conf['port']}.{Color.END}")
     time.sleep(2)
-
-def view_logs():
-    clear_screen()
-    print(f" {Color.YELLOW}ENTRANDO A LOGS...{Color.END}")
-    print(f" {Color.WHITE}Para salir sin apagar: {Color.GREEN}Ctrl + A y luego D{Color.END}")
-    print_line()
-    time.sleep(1)
-    os.system("screen -r slowdns")
 
 def menu_slowdns():
     while True:
@@ -111,23 +106,18 @@ def menu_slowdns():
         print_banner()
         check = subprocess.run(['pgrep', '-f', 'sldns-server'], capture_output=True, text=True)
         status = f"{Color.GREEN}ACTIVO{Color.END}" if check.stdout.strip() else f"{Color.RED}INACTIVO{Color.END}"
-        
         print(f" PANEL SLOWDNS MORATECH | ESTADO: {status}")
         print_line()
-        print(" [1] Instalar / Reinstalar (Limpio)")
+        print(" [1] Instalar / Iniciar (Modo Espejo)")
         print(" [2] Detener Servicio")
-        print(" [3] Ver Info (Capturar Key)")
-        print(" [4] Reiniciar (Cambiar Key)")
+        print(" [3] Ver Info (Public Key)")
+        print(" [4] Reiniciar Servicio")
         print(" [5] Ver Logs en Vivo")
         print(" [0] Volver")
-        print_line()
-        
-        op = input(" ► Opcion : ").strip()
+        op = input("\n ► Opcion : ").strip()
         if op == '1': install_slowdns()
-        elif op == '2': 
-            os.system("pkill -f sldns-server")
-            print(f" {Color.RED}Servicio Detenido.{Color.END}"); time.sleep(1)
+        elif op == '2': os.system("pkill -f sldns-server")
         elif op == '3': view_info()
         elif op == '4': restart_service()
-        elif op == '5': view_logs()
+        elif op == '5': os.system("screen -r slowdns")
         elif op == '0': break
