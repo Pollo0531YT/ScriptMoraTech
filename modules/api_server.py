@@ -399,7 +399,6 @@ def api_borrar():
 
 # para web
 @app.route('/dashboard')
-@require_auth
 def dashboard():
     """Dashboard web de activaciones"""
     from flask import session, redirect
