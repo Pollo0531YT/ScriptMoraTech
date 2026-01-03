@@ -239,17 +239,6 @@ def init_system():
             "badvpn": {"enabled": False, "port": 7300}
         })
 
-    # Intentar configurar expiración (mejor con root)
-    try:
-        # expire_setup se encarga de fallback si no eres root
-        expire_setup.setup_expire_system()
-    except Exception as e:
-        # No crítico: registrar en logs pero continuar
-        try:
-            log_action("system", f"setup_expire_system fallo: {e}")
-        except Exception:
-            pass
-
 def log_action(user, action):
     """Registra acción en logs"""
     try:
