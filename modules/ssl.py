@@ -56,154 +56,137 @@ def menu_ssl():
             input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def install_ssl():
-    """Instalar SSL con Let's Encrypt (igual a la que funciona)"""
+    """Instalar SSL con Let's Encrypt o Añadir puertos adicionales dinámicamente"""
+    import os
+    import subprocess
+    import json
+    import time
+
     clear_screen()
     print_banner()
     print_line()
-    print(f" {Color.CYAN}INSTALANDO SSL CON LET'S ENCRYPT{Color.END}")
-    print_line()
     
-    domain = input(f"\n {Color.GREEN}Dominio (ej: vps2.moratech.work): {Color.END}").strip()
-    if not domain:
-        print(f" {Color.RED}✗ Dominio requerido{Color.END}")
-        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-        return
+    cert_file = '/etc/stunnel/stunnel.pem'
+    conf_file = '/etc/stunnel/stunnel.conf'
     
-    port = input(f" {Color.GREEN}Puerto para SSL (default 443): {Color.END}").strip()
-    if not port:
-        port = "443"
-    
-    print(f"\n {Color.YELLOW}Instalando SSL con certificado Let's Encrypt...{Color.END}")
-    
-    try:
-        # Detener servicios anteriores
-        subprocess.run(['pkill', '-f', 'stunnel4'], stderr=subprocess.DEVNULL)
-        subprocess.run(['service', 'stunnel4', 'stop'], stderr=subprocess.DEVNULL)
-        
-        # Instalar stunnel y certbot
-        print(f" {Color.YELLOW}Instalando paquetes...{Color.END}")
-        subprocess.run(['apt-get', 'update'], stdout=subprocess.DEVNULL)
-        subprocess.run(['apt-get', 'install', '-y', 'stunnel4', 'certbot'], stdout=subprocess.DEVNULL)
-        
-        # Detener servicios que usen puerto 80
-        subprocess.run(['systemctl', 'stop', 'nginx'], stderr=subprocess.DEVNULL)
-        subprocess.run(['systemctl', 'stop', 'apache2'], stderr=subprocess.DEVNULL)
-        subprocess.run(['pkill', '-f', 'pythonwe'], stderr=subprocess.DEVNULL)
-        
-        import time
-        time.sleep(2)
-        
-        # Obtener certificado
-        print(f" {Color.YELLOW}Obteniendo certificado SSL para {domain}...{Color.END}")
-        
-        result = subprocess.run([
-            'certbot', 'certonly', '--standalone', 
-            '-d', domain, 
-            '--non-interactive', 
-            '--agree-tos', 
-            '--register-unsafely-without-email'
-        ], capture_output=True, text=True)
-        
-        if result.returncode != 0:
-            print(f" {Color.RED}✗ Error obteniendo certificado{Color.END}")
-            print(result.stderr)
-            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    # 1. DETECCIÓN DE CERTIFICADO EXISTENTE
+    if os.path.exists(cert_file):
+        print(f" {Color.GREEN}✓ Certificado SSL detectado (Let's Encrypt).{Color.END}")
+        print(f" {Color.CYAN}MODO: AÑADIR NUEVO PUERTO{Color.END}")
+        domain = "EXISTENTE"
+    else:
+        print(f" {Color.CYAN}MODO: INSTALACIÓN INICIAL (Certbot){Color.END}")
+        domain = input(f"\n {Color.GREEN}Dominio (ej: vps.midominio.com): {Color.END}").strip()
+        if not domain:
+            print(f" {Color.RED}✗ Dominio requerido.{Color.END}")
+            time.sleep(2)
             return
-        
-        print(f" {Color.GREEN}✓ Certificado obtenido{Color.END}")
-        
-        # Combinar certificado y clave
-        print(f" {Color.YELLOW}Configurando certificado...{Color.END}")
-        cert_path = f"/etc/letsencrypt/live/{domain}/fullchain.pem"
-        key_path = f"/etc/letsencrypt/live/{domain}/privkey.pem"
-        
-        subprocess.run([
-            'bash', '-c',
-            f'cat {cert_path} {key_path} > /etc/stunnel/stunnel.pem'
-        ])
-        
-        subprocess.run(['chmod', '600', '/etc/stunnel/stunnel.pem'])
-        
-        # Obtener puerto SSH
-        ssh_port = '22'
-        
-        # Configuración stunnel EXACTA como la máquina que funciona
-        stunnel_conf = f"""cert = /etc/stunnel/stunnel.pem
+
+    # 2. DATOS DEL PUERTO
+    port = input(f" {Color.GREEN}Puerto SSL a abrir (ej: 443, 444): {Color.END}").strip()
+    if not port: port = "443"
+    
+    # Verificar si el puerto ya está configurado en el archivo para evitar duplicados
+    if os.path.exists(conf_file):
+        with open(conf_file, 'r') as f:
+            if f"accept = {port}" in f.read():
+                print(f"\n {Color.RED}✗ El puerto {port} ya está configurado en Stunnel.{Color.END}")
+                input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+                return
+
+    local_port = input(f" {Color.GREEN}Puerto Local de destino (SSH) [22]: {Color.END}").strip() or "22"
+
+    try:
+        # 3. PROCESO DE CERTBOT (SOLO SI NO EXISTE CERTIFICADO)
+        if domain != "EXISTENTE":
+            print(f"\n {Color.YELLOW}Obteniendo certificado Let's Encrypt...{Color.END}")
+            
+            # Detener servicios que usen el puerto 80
+            subprocess.run(['pkill', '-f', 'pythonwe'], stderr=subprocess.DEVNULL)
+            subprocess.run(['systemctl', 'stop', 'nginx'], stderr=subprocess.DEVNULL)
+            
+            # Instalar paquetes si no están
+            subprocess.run(['apt-get', 'install', '-y', 'stunnel4', 'certbot'], stdout=subprocess.DEVNULL)
+
+            result = subprocess.run([
+                'certbot', 'certonly', '--standalone', 
+                '-d', domain, 
+                '--non-interactive', 
+                '--agree-tos', 
+                '--register-unsafely-without-email'
+            ], capture_output=True, text=True)
+
+            if result.returncode == 0:
+                cert_path = f"/etc/letsencrypt/live/{domain}/fullchain.pem"
+                key_path = f"/etc/letsencrypt/live/{domain}/privkey.pem"
+                # Crear el .pem combinado
+                subprocess.run(f'cat {cert_path} {key_path} > {cert_file}', shell=True)
+                subprocess.run(['chmod', '600', cert_file])
+                print(f" {Color.GREEN}✓ Certificado generado exitosamente.{Color.END}")
+            else:
+                print(f" {Color.RED}✗ Fallo en Certbot: {result.stderr}{Color.END}")
+                input(" Presiona Enter..."); return
+
+        # 4. CONFIGURACIÓN DEL ARCHIVO STUNNEL.CONF
+        # Si el archivo no existe o está vacío, creamos la cabecera global
+        if not os.path.exists(conf_file) or os.path.getsize(conf_file) == 0:
+            stunnel_conf = f"""cert = /etc/stunnel/stunnel.pem
 client = no
 socket = a:SO_REUSEADDR=1
 socket = l:TCP_NODELAY=1
 socket = r:TCP_NODELAY=1
 
-[ssh-tls]
-connect = 127.0.0.1:{ssh_port}
+[ssl-{port}]
+connect = 127.0.0.1:{local_port}
 accept = {port}
-cert = /etc/stunnel/stunnel.pem
 TIMEOUTclose = 0
 """
+            with open(conf_file, 'w') as f:
+                f.write(stunnel_conf)
+        else:
+            # Si ya existe, solo añadimos el nuevo bloque al final
+            nuevo_bloque = f"""
+[ssl-{port}]
+connect = 127.0.0.1:{local_port}
+accept = {port}
+TIMEOUTclose = 0
+"""
+            with open(conf_file, 'a') as f:
+                f.write(nuevo_bloque)
+
+        # 5. ACTIVACIÓN Y REINICIO
+        print(f" {Color.YELLOW}Reiniciando servicios...{Color.END}")
         
-        with open('/etc/stunnel/stunnel.conf', 'w') as f:
-            f.write(stunnel_conf)
-        
-        # Configurar /etc/default/stunnel4
-        with open('/etc/default/stunnel4', 'r') as f:
-            content = f.read()
-        
-        if 'FILES="/etc/stunnel/*.conf"' not in content:
-            with open('/etc/default/stunnel4', 'a') as f:
-                f.write('\nFILES="/etc/stunnel/*.conf"\n')
-        
-        # Iniciar
-        print(f" {Color.YELLOW}Iniciando Stunnel...{Color.END}")
+        # Asegurar que stunnel4 esté habilitado en /etc/default/stunnel4
+        with open('/etc/default/stunnel4', 'w') as f:
+            f.write('ENABLED=1\nFILES="/etc/stunnel/*.conf"\n')
+
         subprocess.run(['systemctl', 'daemon-reload'])
         subprocess.run(['systemctl', 'restart', 'stunnel4'])
         subprocess.run(['systemctl', 'enable', 'stunnel4'], stderr=subprocess.DEVNULL)
-        
-        time.sleep(2)
-        
-        # Verificar
-        result = subprocess.run(['systemctl', 'status', 'stunnel4'], capture_output=True, text=True)
-        if 'active (running)' in result.stdout:
-            print(f" {Color.GREEN}✓ Stunnel iniciado{Color.END}")
-        
-        # Verificar puerto
-        result = subprocess.run(['ss', '-tuln'], capture_output=True, text=True)
-        if f':{port}' in result.stdout:
-            print(f" {Color.GREEN}✓ Puerto {port} escuchando{Color.END}")
-        
-        # Abrir puerto
+
+        # Abrir puertos en Firewall
         subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
         subprocess.run(['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'])
-        
-        # Forwarding
-        print(f" {Color.YELLOW}Configurando forwarding...{Color.END}")
-        moratech.configure_forwarding()
-        print(f" {Color.GREEN}✓ Forwarding configurado{Color.END}")
-        
-        # Guardar en config
-        with open(PROTOCOLS_FILE, 'r') as f:
-            protocols = json.load(f)
-        
-        protocols['ssl']['enabled'] = True
-        protocols['ssl']['port'] = int(port)
-        protocols['ssl']['domain'] = domain
-        protocols['ssl']['cert_type'] = 'letsencrypt'
-        
-        with open(PROTOCOLS_FILE, 'w') as f:
-            json.dump(protocols, f, indent=4)
-        
-        print(f"\n {Color.GREEN}✓ SSL Let's Encrypt instalado exitosamente{Color.END}")
-        print(f" {Color.CYAN}Dominio: {domain}{Color.END}")
-        print(f" {Color.CYAN}Puerto: {port}{Color.END}")
-        print(f" {Color.YELLOW}Certificado válido por 90 días{Color.END}")
-        moratech.log_action("admin", f"SSL Let's Encrypt: {domain}:{port}")
-        
-    except Exception as e:
-        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
-        import traceback
-        traceback.print_exc()
-    
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
+        # Guardar en JSON (opcional para tu panel)
+        try:
+            with open(PROTOCOLS_FILE, 'r') as f:
+                protocols = json.load(f)
+            protocols['ssl']['enabled'] = True
+            protocols['ssl']['port'] = int(port) # Registra el último puerto agregado
+            with open(PROTOCOLS_FILE, 'w') as f:
+                json.dump(protocols, f, indent=4)
+        except: pass
+
+        print(f"\n {Color.GREEN}✓ PUERTO {port} CONFIGURADO CORRECTAMENTE{Color.END}")
+        print(f" {Color.CYAN}Destino: 127.0.0.1:{local_port}{Color.END}")
+
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error en la instalación: {e}{Color.END}")
+
+    input(f"\n {Color.CYAN}Presiona Enter para volver...{Color.END}")
+    
 def stop_ssl():
     
     """Detener SSL/Stunnel"""
