@@ -227,8 +227,11 @@ def editar_usuario():
     user_data = users[username_input]
     
     # --- MENÚ DE EDICIÓN ---
-    print(f"\n {Color.CYAN}--- EDITAR: {username_input} ---{Color.END}")
-    print(f" [1] Sumar días | [2] Reiniciar días | [3] Password | [4] {Color.RED}Eliminar{Color.END} | [0] Salir")
+    print(f"\n {Color.CYAN}--- GESTIÓN DE USUARIO: {username_input} ---{Color.END}")
+    print(f" {Color.GREEN}[1]{Color.END} Sumar días (Extender vigencia)")
+    print(f" {Color.GREEN}[2]{Color.END} Reiniciar días (Nueva fecha desde hoy)")
+    print(f" {Color.GREEN}[3]{Color.END} Cambiar Contraseña")
+    print(f" {Color.RED}[0]{Color.END} Salir / Cancelar")
     
     choice = input(f"\n {Color.CYAN}►{Color.END} Opción: ").strip()
     
@@ -286,24 +289,7 @@ def editar_usuario():
                 if save_users({username_input: users[username_input]}, full_database=users):
                     print(f"{' ' * 40}\r {Color.GREEN}✓ Contraseña actualizada.{Color.END}")
             else: print(f" {Color.RED}✗ No puede estar vacía.{Color.END}")
-
-    elif choice == '4':
-        confirm = input(f" {Color.RED}¿Eliminar a {username_input}? (s/n): {Color.END}").lower()
-        if confirm == 's':
-            print(f" {Color.YELLOW}🗑️  Borrando usuario...{Color.END}", end="\r")
-            subprocess.run(['pkill', '-u', username_input], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
-            # Al eliminar, el usuario ya no debe estar en el primer diccionario
-            deleted_user = username_input
-            del users[username_input]
-            
-            # Enviamos el diccionario vacío para ese usuario, pero con la base de datos sin él
-            if save_users({}, full_database=users):
-                # Importante: save_users debe encargarse de borrar de Linux lo que no esté en full_database
-                print(f"{' ' * 40}\r {Color.GREEN}✓ Usuario eliminado correctamente.{Color.END}")
-            else:
-                print(f"\n {Color.RED}✗ Error al eliminar.{Color.END}")
-
+   
     input(f"\n {Color.CYAN}Presiona Enter para continuar...{Color.END}")
 
 def menu_borrar_usuarios():
