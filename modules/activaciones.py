@@ -4,11 +4,14 @@ Sistema de registro de activaciones
 Registra todas las operaciones del API para auditoría
 """
 import json
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 CONFIG_DIR = Path.home() / '.moratech'
 ACTIVACIONES_FILE = CONFIG_DIR / 'activaciones.json'
+
+# Zona horaria Costa Rica (UTC-6)
+CR_TZ = timezone(timedelta(hours=-6))
 
 def init_activaciones():
     """Inicializar archivo de activaciones si no existe"""
@@ -41,7 +44,7 @@ def registrar_activacion(operacion, usuario, nombre, dias, referencia='', origen
         
         activacion = {
             'id': last_id + 1,
-            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'timestamp': datetime.now(CR_TZ).strftime('%Y-%m-%d %H:%M:%S'),  # ← HORA COSTA RICA
             'operacion': operacion,
             'usuario': usuario,
             'nombre': nombre,
@@ -127,11 +130,10 @@ def obtener_estadisticas():
             origenes[origen] = origenes.get(origen, 0) + 1
         
         # Últimas 24 horas
-        from datetime import timedelta
-        ahora = datetime.now()
+        ahora = datetime.now(CR_TZ)
         hace_24h = ahora - timedelta(hours=24)
         recientes = [a for a in activaciones 
-                    if datetime.strptime(a['timestamp'], '%Y-%m-%d %H:%M:%S') > hace_24h]
+                    if datetime.strptime(a['timestamp'], '%Y-%m-%d %H:%M:%S').replace(tzinfo=CR_TZ) > hace_24h]
         
         return {
             'total': total,
