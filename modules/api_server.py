@@ -125,7 +125,8 @@ def api_agregar_ssh():
             "enabled": True
         }
         
-        if save_users(users):
+        new_user = {username: users[username]}
+        if save_users(new_user, full_database=users):
             result = {
                 'success': True,
                 'user': username,
@@ -190,7 +191,8 @@ def api_agregar_token():
             "original_token": token
         }
         
-        if save_users(users):
+        new_token = {token: users[token]}
+        if save_users(new_token, full_database=users):
             result = {
                 'success': True,
                 'nombre': nombre,
@@ -249,7 +251,8 @@ def api_renovar():
         
         users[username]['expires'] = new_expire.isoformat()
         
-        if save_users(users):
+        updated_user = {username: users[username]}
+        if save_users(updated_user, full_database=users):
             new_days = (new_expire - datetime.now()).days
             result = {
                 'success': True,
@@ -299,7 +302,8 @@ def api_reiniciar():
         else:
             users[username]['expires'] = None
         
-        if save_users(users):
+        updated_user = {username: users[username]}
+        if save_users(updated_user, full_database=users):
             result = {
                 'success': True,
                 'user': username,
@@ -337,8 +341,8 @@ def api_borrar():
             return jsonify({'error': 'Usuario no encontrado'}), 404
         
         del users[username]
-        
-        if save_users(users):
+        # Aquí pasamos diccionario vacío porque ya lo eliminamos
+        if save_users({}, full_database=users):
             # Desconectar usuario (igual que delete_specific_user)
             subprocess.run(['pkill', '-u', username], stderr=subprocess.DEVNULL)
             
