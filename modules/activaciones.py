@@ -69,7 +69,7 @@ def registrar_activacion(operacion, usuario, nombre, dias, referencia='', origen
         print(f"Error registrando activación: {e}")
         return False
 
-def obtener_activaciones(limite=100, filtro_origen=None, filtro_usuario=None, filtro_referencia=None):
+def obtener_activaciones(limite=300, filtro_origen=None, filtro_usuario=None, filtro_referencia=None):
     """
     Obtener activaciones con filtros opcionales
     
