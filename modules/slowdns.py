@@ -68,8 +68,16 @@ def ensure_dirs():
 
 
 def apt_install(pkgs):
-    run(["apt-get", "update"], capture=True)
-    run(["apt-get", "install", "-y"] + pkgs)
+    """Instala paquetes sin imprimir; devuelve True/False."""
+    env = os.environ.copy()
+    env["DEBIAN_FRONTEND"] = "noninteractive"
+    try:
+        subprocess.run(["apt-get", "update", "-y"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, env=env)
+        subprocess.run(["apt-get", "install", "-y"] + pkgs, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True, env=env)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+
 
 
 def download_any(urls, dest):
@@ -198,11 +206,10 @@ def install_flow():
 
     # Paso 1: dependencias
     print(f"\n {Color.YELLOW}1) Instalando dependencias...{Color.END}")
-    try:
-        apt_install(["curl", "wget", "screen", "iptables", "dnsutils", "python3", "git"])
+    if apt_install(["curl", "wget", "screen", "iptables", "dnsutils", "python3", "git"]):
         print(f"  {Color.GREEN}✓ Dependencias instaladas{Color.END}")
-    except Exception as e:
-        print(f"  {Color.RED}✗ Error instalando dependencias: {e}{Color.END}")
+    else:
+        print(f"  {Color.RED}✗ Error instalando dependencias{Color.END}")
         input("\n Presiona Enter...")
         return
 
@@ -293,22 +300,80 @@ def stop_flow():
     run(["pkill", "-f", "sldns-client"], capture=True)
     print(f"\n {Color.GREEN}✓ Servicios slowdns detenidos.{Color.END}")
 
+def _unit_belongs_to_moratech(unit_path):
+    """Devuelve True si la unit parece ser la creada por nosotros."""
+    try:
+        with open(unit_path, "r") as f:
+            contents = f.read()
+        if "MoraTech" in contents or SERVER_BIN in contents or "sldns-server" in contents:
+            return True
+    except Exception:
+        pass
+    return False
+
 def uninstall_flow():
-    stop_flow()
-    for p in (SERVER_BIN, CLIENT_BIN, KEY_FILE, PUB_FILE, CONFIG_FILE, LOG_FILE):
+    ensure_root()
+    # Detener servicios primero
+    run(["systemctl", "stop", "server-sldns"], capture=True)
+    run(["systemctl", "stop", "client-sldns"], capture=True)
+    run(["systemctl", "disable", "server-sldns"], capture=True)
+    run(["systemctl", "disable", "client-sldns"], capture=True)
+
+    # matar procesos si quedan
+    run(["pkill", "-f", "sldns-server"], capture=True)
+    run(["pkill", "-f", "sldns-client"], capture=True)
+
+    # lista de ficheros que queremos eliminar (solo nuestros paths)
+    targets = [SERVER_BIN, CLIENT_BIN, KEY_FILE, PUB_FILE, CONFIG_FILE, LOG_FILE]
+    removed = []
+    skipped = []
+    for p in targets:
         try:
-            if os.path.exists(p):
+            if p and os.path.exists(p):
+                # si el fichero está en uso, lo saltamos
+                in_use = False
+                try:
+                    # pgrep por nombre de binario
+                    base = os.path.basename(p)
+                    proc = subprocess.run(["pgrep", "-f", base], capture_output=True, text=True)
+                    if proc.stdout.strip():
+                        in_use = True
+                except Exception:
+                    pass
+                if in_use:
+                    skipped.append((p, "en uso"))
+                    continue
                 os.unlink(p)
-        except Exception:
-            pass
-    for u in ("/etc/systemd/system/server-sldns.service", "/etc/systemd/system/client-sldns.service"):
+                removed.append(p)
+        except Exception as e:
+            skipped.append((p, str(e)))
+
+    # unidades systemd: solo eliminarlas si parecen nuestras
+    units = ["/etc/systemd/system/server-sldns.service", "/etc/systemd/system/client-sldns.service"]
+    for u in units:
         try:
             if os.path.exists(u):
-                os.unlink(u)
-        except Exception:
-            pass
+                if _unit_belongs_to_moratech(u):
+                    os.unlink(u)
+                    removed.append(u)
+                else:
+                    skipped.append((u, "unit no parece ser de MoraTech — SKIP"))
+        except Exception as e:
+            skipped.append((u, str(e)))
+
     run(["systemctl", "daemon-reload"], capture=True)
-    print(f"\n {Color.GREEN}✓ Uninstall completo (archivos eliminados).{Color.END}")
+
+    # reporte al usuario
+    if removed:
+        print(f"\n {Color.GREEN}✓ Eliminados:{Color.END}")
+        for r in removed:
+            print(f"   - {r}")
+    if skipped:
+        print(f"\n {Color.YELLOW}Archivos/units omitidos:{Color.END}")
+        for s, reason in skipped:
+            print(f"   - {s} ({reason})")
+
+    print(f"\n {Color.GREEN}Uninstall (parcial/seguro) completado.{Color.END}")
 
 # -------------------------
 # MENU (limpio, con colores)
