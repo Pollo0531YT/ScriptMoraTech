@@ -202,8 +202,8 @@
             }
             
             let html = '<table><thead><tr>';
-            html += '<th>ID</th><th>Fecha/Hora</th><th>Operación</th><th>Usuario</th>';
-            html += '<th>Nombre</th><th>Días</th><th>Referencia</th><th>Origen</th><th>Estado</th>';
+            html += '<th>ID</th><th>Estado</th><th>Fecha/Hora</th><th>Origen</th>';
+            html += '<th>Nombre</th><th>Token</th><th>Días</th><th>Referencia</th>';
             html += '</tr></thead><tbody>';
             
             activaciones.forEach(a => {
@@ -213,14 +213,13 @@
                 
                 html += `<tr>
                     <td>${a.id}</td>
+                    <td><span class="badge ${estadoBadge}">${estadoText}</span></td>
                     <td>${a.timestamp}</td>
-                    <td>${a.operacion}</td>
-                    <td><code>${a.usuario}</code></td>
+                    <td><span class="badge ${origenBadge}">${a.origen}</span></td>
                     <td>${a.nombre}</td>
+                    <td><code>${a.usuario}</code></td>
                     <td>${a.dias}</td>
                     <td>${a.referencia || '-'}</td>
-                    <td><span class="badge ${origenBadge}">${a.origen}</span></td>
-                    <td><span class="badge ${estadoBadge}">${estadoText}</span></td>
                 </tr>`;
             });
             
