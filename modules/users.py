@@ -62,7 +62,7 @@ def control_usuarios_menu():
         elif choice == '11':
             menu_api_server()
         elif choice == '12':
-            start_api_general_server
+            start_api_general_server()
         elif choice == '14':
             reset_token_password()
         elif choice == '0':
@@ -1604,7 +1604,7 @@ def start_api_server():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     menu_api_server()
-    
+
 def stop_api_server():
     """Detener servidor API"""
     clear_screen()
