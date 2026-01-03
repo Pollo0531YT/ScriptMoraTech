@@ -57,61 +57,84 @@ def menu_phyton():
             print(f"\n{Color.YELLOW}Función en desarrollo...{Color.END}")
             input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
+
 def install_proxy():
-    """Instalar Proxy Python con configuración dinámica (Websocket/Direct)"""
-    import subprocess
-    import json
-    import time
-    
+    """Instalar Proxy Python (Python 2) - versión que funciona"""
     clear_screen()
     print_banner()
     print_line()
-    print(f" {Color.CYAN}INSTALADOR PROXY PYTHON DINÁMICO{Color.END}")
+    print(f" {Color.CYAN}INSTALANDO PROXY PYTHON{Color.END}")
     print_line()
 
-    # 1. Recolección de Datos
-    port = input(f"\n {Color.GREEN}Puerto para Proxy (default 80): {Color.END}").strip() or "80"
-    
+    # 1. Puerto del Proxy (Externo)
+    port = input(f"\n {Color.GREEN}Puerto para el Proxy (Ej: 80, 8080): {Color.END}").strip() or "80"
+
+    # 2. Puerto Local (SSH / Dropbear)
     local_port = input(f" {Color.GREEN}Puerto Local de Destino (SSH/Dropbear) [22]: {Color.END}").strip() or "22"
-    
+
+    # 3. Response Status (101, 200, etc)
     print(f"\n {Color.YELLOW}--- CONFIGURACIÓN DE RESPUESTA ---{Color.END}")
-    print(" [101] Para OVER WEBSOCKET")
-    print(" [200] Para Connection Established")
+    print(" Para Websocket usa [101]. Para estándar usa [200].")
     status_code = input(f" {Color.GREEN}Status de Respuesta [101]: {Color.END}").strip() or "101"
-
-    print(f"\n {Color.YELLOW}--- MINI BANNER (Opcional) ---{Color.END}")
-    mini_banner = input(f" {Color.GREEN}Texto o HTML para el banner: {Color.END}").strip()
-
-    # Formatear Response y Banner
-    banner_payload = f"<br><font color='green'>{mini_banner}</font><br>" if mini_banner else ""
     
+    # 4. Mini-Banner (HTML o Texto)
+    print(f"\n {Color.YELLOW}--- MINI BANNER ---{Color.END}")
+    mini_banner = input(f" {Color.GREEN}Introduzca Mini-Banner (Enter para ninguno): {Color.END}").strip()
+
+    # Formatear el Banner si existe
+    banner_payload = ""
+    if mini_banner:
+        banner_payload = f"<br><font color='green'>{mini_banner}</font><br>"
+
+    # Construir el Response String
+    # Si es 101, suele ir con Switching Protocols, si es 200 con Connection Established
     if status_code == "101":
         response_str = f"HTTP/1.1 101 Switching Protocols!\\r\\n\\r\\n{banner_payload}"
     else:
         response_str = f"HTTP/1.1 {status_code} Connection Established\\r\\n\\r\\n{banner_payload}"
 
-    # 2. Liberar puerto si está ocupado
+    # Verificar y liberar puerto si está ocupado
     try:
         result = subprocess.run(['lsof', '-ti', f':{port}'], capture_output=True, text=True)
         pids = result.stdout.strip()
         if pids:
-            print(f"\n {Color.RED}⚠ Liberando puerto {port}...{Color.END}")
-            for pid in pids.split('\n'):
-                subprocess.run(['kill', '-9', pid], stderr=subprocess.DEVNULL)
-            time.sleep(1)
+            print(f"\n {Color.RED}⚠ Puerto {port} está en uso:{Color.END}")
+            result_process = subprocess.run(['lsof', '-i', f':{port}'], capture_output=True, text=True)
+            print(result_process.stdout)
+            confirm = input(f"\n {Color.YELLOW}¿Liberar el puerto {port}? (s/n): {Color.END}").strip().lower()
+            if confirm == 's':
+                for pid in pids.split('\n'):
+                    if pid:
+                        subprocess.run(['kill', '-9', pid], stderr=subprocess.DEVNULL)
+                import time
+                time.sleep(2)
+            else:
+                print(f" {Color.RED}Instalación cancelada{Color.END}")
+                input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+                return
     except:
         pass
 
-    print(f"\n {Color.YELLOW}Instalando dependencias...{Color.END}")
+    print(f"\n {Color.YELLOW}Instalando Proxy Python en puerto {port}...{Color.END}")
+
     try:
         # Detener procesos previos
         subprocess.run(['pkill', '-f', 'pythonwe'], stderr=subprocess.DEVNULL)
-        
-        # Instalación de paquetes necesarios
-        subprocess.run(['apt-get', 'update'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        subprocess.run(['apt-get', 'install', 'python2', 'screen', 'lsof', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['pkill', '-f', 'proxy.py'], stderr=subprocess.DEVNULL)
 
-        # 3. Construcción del Script Proxy.py
+        # Instalar dependencias
+        print(f" {Color.YELLOW}Instalando dependencias...{Color.END}")
+        subprocess.run(['apt-get', 'update'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'python2', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'python', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'screen', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'lsof', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        # Detectar puerto SSH
+        ssh_port = '22'
+        print(f" {Color.YELLOW}Puerto SSH: {ssh_port}{Color.END}")
+
+        # Script Python 2 ORIGINAL que funciona
         proxy_script = f"""#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
 import socket, threading, thread, select, signal, sys, time, getopt
@@ -124,8 +147,8 @@ PASS = ''
 # CONST
 BUFLEN = 4096 * 4
 TIMEOUT = 60
-DEFAULT_HOST = "127.0.0.1:{local_port}"
-RESPONSE = '{response_str}'
+DEFAULT_HOST = "127.0.0.1:{ssh_port}"
+RESPONSE = 'HTTP/1.1 101 Switching Protocols! \\r\\n\\r\\n'
  
 class Server(threading.Thread):
     def __init__(self, host, port):
@@ -184,6 +207,7 @@ class Server(threading.Thread):
         try:
             self.running = False
             self.threadsLock.acquire()
+            
             threads = list(self.threads)
             for c in threads:
                 c.close()
@@ -206,28 +230,37 @@ class ConnectionHandler(threading.Thread):
             if not self.clientClosed:
                 self.client.shutdown(socket.SHUT_RDWR)
                 self.client.close()
-        except: pass
-        finally: self.clientClosed = True
+        except:
+            pass
+        finally:
+            self.clientClosed = True
             
         try:
             if not self.targetClosed:
                 self.target.shutdown(socket.SHUT_RDWR)
                 self.target.close()
-        except: pass
-        finally: self.targetClosed = True
+        except:
+            pass
+        finally:
+            self.targetClosed = True
 
     def run(self):
         try:
             self.client_buffer = self.client.recv(BUFLEN)
+        
             hostPort = self.findHeader(self.client_buffer, 'X-Real-Host')
             
-            if hostPort == '': hostPort = DEFAULT_HOST
+            if hostPort == '':
+                hostPort = DEFAULT_HOST
 
             split = self.findHeader(self.client_buffer, 'X-Split')
-            if split != '': self.client.recv(BUFLEN)
+
+            if split != '':
+                self.client.recv(BUFLEN)
             
             if hostPort != '':
                 passwd = self.findHeader(self.client_buffer, 'X-Pass')
+                
                 if len(PASS) != 0 and passwd == PASS:
                     self.method_CONNECT(hostPort)
                 elif len(PASS) != 0 and passwd != PASS:
@@ -238,6 +271,7 @@ class ConnectionHandler(threading.Thread):
                     self.client.send('HTTP/1.1 403 Forbidden!\\r\\n\\r\\n')
             else:
                 self.client.send('HTTP/1.1 400 NoXRealHost!\\r\\n\\r\\n')
+
         except Exception as e:
             self.log += ' - error: ' + str(e)
             self.server.printLog(self.log)
@@ -247,11 +281,17 @@ class ConnectionHandler(threading.Thread):
 
     def findHeader(self, head, header):
         aux = head.find(header + ': ')
-        if aux == -1: return ''
+    
+        if aux == -1:
+            return ''
+
         aux = head.find(':', aux)
         head = head[aux+2:]
         aux = head.find('\\r\\n')
-        if aux == -1: return ''
+
+        if aux == -1:
+            return ''
+
         return head[:aux];
 
     def connect_target(self, host):
@@ -259,7 +299,9 @@ class ConnectionHandler(threading.Thread):
         if i != -1:
             port = int(host[i+1:])
             host = host[:i]
-        else: port = 80
+        else:
+            port = 80
+
         (soc_family, soc_type, proto, _, address) = socket.getaddrinfo(host, port)[0]
         self.target = socket.socket(soc_family, soc_type, proto)
         self.targetClosed = False
@@ -267,9 +309,11 @@ class ConnectionHandler(threading.Thread):
 
     def method_CONNECT(self, path):
         self.log += ' - CONNECT ' + path
+        
         self.connect_target(path)
         self.client.sendall(RESPONSE)
         self.client_buffer = ''
+
         self.server.printLog(self.log)
         self.doCONNECT()
 
@@ -280,36 +324,48 @@ class ConnectionHandler(threading.Thread):
         while True:
             count += 1
             (recv, _, err) = select.select(socs, [], socs, 3)
-            if err: error = True
+            if err:
+                error = True
             if recv:
                 for in_ in recv:
                     try:
                         data = in_.recv(BUFLEN)
                         if data:
-                            if in_ is self.target: self.client.send(data)
+                            if in_ is self.target:
+                                self.client.send(data)
                             else:
                                 while data:
                                     byte = self.target.send(data)
                                     data = data[byte:]
                             count = 0
-                        else: break
+                        else:
+                            break
                     except:
                         error = True
                         break
-            if count == TIMEOUT or error: break
+            if count == TIMEOUT:
+                error = True
+
+            if error:
+                break
+
 
 def main():
     print "\\n=============================="
-    print "      PYTHON PROXY DINAMICO"
+    print "      PYTHON PROXY"
     print "=============================="
-    print "Puerto Proxy: " + str(LISTENING_PORT)
-    print "Puerto Local: " + DEFAULT_HOST
+    print "IP: " + LISTENING_ADDR
+    print "Puerto: " + str(LISTENING_PORT)
     print "Iniciado correctamente\\n"
+    
     server = Server(LISTENING_ADDR, LISTENING_PORT)
     server.start()
+
     while True:
-        try: time.sleep(2)
+        try:
+            time.sleep(2)
         except KeyboardInterrupt:
+            print 'Deteniendo...'
             server.close()
             break
 
@@ -317,35 +373,56 @@ if __name__ == '__main__':
     main()
 """
 
-        # 4. Guardar e Iniciar
+        # Guardar script
         with open('/root/proxy.py', 'w') as f:
             f.write(proxy_script)
         
         subprocess.run(['chmod', '+x', '/root/proxy.py'])
-        
-        print(f" {Color.YELLOW}Iniciando en Screen 'pythonwe'...{Color.END}")
+
+        # Iniciar proxy en screen con Python 2
+        print(f" {Color.YELLOW}Iniciando proxy en segundo plano...{Color.END}")
+        subprocess.run(['screen', '-wipe'], stderr=subprocess.DEVNULL)
         subprocess.run(['screen', '-dmS', 'pythonwe', 'python2', '/root/proxy.py'])
+
+        import time
         time.sleep(2)
 
-        # 5. Firewall y Configuración Final
+        # Verificar si inició
+        result = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+        if 'pythonwe' in result.stdout:
+            print(f" {Color.GREEN}✓ Proxy iniciado en screen{Color.END}")
+        else:
+            print(f" {Color.RED}⚠ Proxy pudo no iniciar correctamente{Color.END}")
+
+        # Abrir puerto
+        subprocess.run(['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'])
         subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
-        
-        # Guardar en archivo de protocolos
+
+        # Configurar forwarding
+        print(f" {Color.YELLOW}Configurando forwarding...{Color.END}")
+        moratech.configure_forwarding()
+        print(f" {Color.GREEN}✓ Forwarding configurado{Color.END}")
+
+        # Guardar en config
         with open(PROTOCOLS_FILE, 'r') as f:
             protocols = json.load(f)
+
         protocols['proxy']['enabled'] = True
         protocols['proxy']['port'] = int(port)
+
         with open(PROTOCOLS_FILE, 'w') as f:
             json.dump(protocols, f, indent=4)
 
-        print(f"\n {Color.GREEN}✓ PROXY INSTALADO EXITOSAMENTE{Color.END}")
-        print(f" {Color.CYAN}Puerto: {port} -> Destino Local: {local_port}{Color.END}")
-        print(f" {Color.CYAN}Response: {status_code}{Color.END}")
-        
-    except Exception as e:
-        print(f"\n {Color.RED}✗ Error crítico: {e}{Color.END}")
+        print(f"\n {Color.GREEN}✓ Proxy Python instalado en puerto {port}{Color.END}")
+        print(f" {Color.YELLOW}Para ver logs: screen -r pythonwe{Color.END}")
+        moratech.log_action("admin", f"Proxy Python configurado en puerto {port}")
 
-    input(f"\n {Color.CYAN}Presiona Enter para volver...{Color.END}")
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        import traceback
+        traceback.print_exc()
+
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 def stop_proxy():
     """Detener Proxy Python"""
