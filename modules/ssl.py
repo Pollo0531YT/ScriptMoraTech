@@ -132,205 +132,139 @@ def _stop_specific_port_interactive():
 
 
 def install_ssl():
-    """Instalar o reutilizar certificado Let's Encrypt y añadir un puerto a stunnel (interfaz simplificada)."""
+    """
+    Install SSL (modo minimal): muestra solo mensajes cortos.
+    - Reusa /etc/stunnel/stunnel.pem si existe (modo rápido).
+    - Si no existe, pide dominio y obtiene certificado con certbot (staging por defecto).
+    - Mensajes mínimos: puerto, configurando, reiniciando, instalado / error.
+    """
     import time
     from pathlib import Path
-    import shlex
 
-    def stream_cmd(cmd, header=None):
-        """Ejecuta un comando y muestra su salida en tiempo real (retorna código)."""
-        if header:
-            print(f"\n {Color.YELLOW}{header}{Color.END}")
-        print(f"  ➜ Ejecutando: {' '.join(cmd)}\n")
-        p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        try:
-            for line in p.stdout:
-                print("   " + line.rstrip())
-        except Exception:
-            pass
-        p.wait()
-        return p.returncode
+    STUNNEL_CONF = Path("/etc/stunnel/stunnel.conf")
+    STUNNEL_PEM = Path("/etc/stunnel/stunnel.pem")
+    PROTOCOLS = Path(PROTOCOLS_FILE)
 
     clear_screen()
-    print_banner()
     print_line()
-    print(f" {Color.CYAN}INSTALANDO SSL CON LET'S ENCRYPT (MEJORADO){Color.END}")
+    print(f" {Color.CYAN}INSTALANDO SSL CON LET'S ENCRYPT (MINIMAL){Color.END}")
     print_line()
 
-    # 1) Detectar certificado existente:
+    # Detectar si ya existe un certificado
+    cert_exists = STUNNEL_PEM.exists()
+
+    # Si existe, no pedir dominio; si no, pedirlo (pero la UI será minimal)
     domain = None
-    cert_dir = None
-    try:
-        # Leer PROTOCOLS_FILE si existe
-        if Path(PROTOCOLS_FILE).exists():
-            with open(PROTOCOLS_FILE, 'r') as f:
-                protocols = json.load(f)
-            ssl_info = protocols.get('ssl', {})
-            d = ssl_info.get('domain')
-            if d and Path(f"/etc/letsencrypt/live/{d}").exists():
-                domain = d
-                cert_dir = Path(f"/etc/letsencrypt/live/{d}")
-    except Exception:
-        domain = None
-
-    # Si no hay domain según PROTOCOLS_FILE, buscar en /etc/letsencrypt/live cualquier certificado
-    if not domain:
-        try:
-            live_path = Path("/etc/letsencrypt/live")
-            if live_path.exists():
-                candidates = [p for p in live_path.iterdir() if p.is_dir()]
-                if candidates:
-                    # elegir el primero disponible (esto significa que ya tenés al menos un cert)
-                    cert_dir = candidates[0]
-                    domain = cert_dir.name
-        except Exception:
-            domain = None
-
-    # Si ya hay certificado, NO pedir dominio: pedir solo puerto y reutilizar
-    reuse_cert = False
-    if domain:
-        reuse_cert = True
-        print(f"\n {Color.GREEN}✓ Certificado detectado: {domain}{Color.END}")
-        print(f" {Color.CYAN}Se reutilizará este certificado y solo se solicitará el puerto a agregar.{Color.END}\n")
-
-    # Si no hay certificado, pedir dominio (flujo completo)
-    if not reuse_cert:
-        domain = input(f"\n {Color.GREEN}Dominio (ej: vps2.moratech.work): {Color.END}").strip()
+    if cert_exists:
+        print(" ✓ Certificado detectado: se reutilizará (no se solicitará dominio).")
+    else:
+        domain = input(" Dominio (ej: vps2.moratech.work): ").strip()
         if not domain:
-            print(f"\n {Color.RED}✗ Dominio requerido, operación cancelada.{Color.END}")
-            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            print(f"\n {Color.RED}✗ Dominio requerido.{Color.END}")
+            input("\n Presiona Enter...")
             return
 
-    # Pedir puerto (si estamos agregando, no pedimos dominio)
-    port = input(f" {Color.GREEN}Puerto para SSL (default 443): {Color.END}").strip()
-    if not port:
-        port = "443"
+    port = input(" Puerto para SSL (default 443): ").strip() or "443"
 
-    # Si no existía cert, pedir staging op (para pruebas)
-    staging = False
-    if not reuse_cert:
-        s = input(f" {Color.GREEN}¿Usar staging de Let's Encrypt para pruebas? (s/N): {Color.END}").strip().lower()
-        staging = (s == 's')
-
-    # Si no hay cert y debemos crearlo: instalar dependencias y ejecutar certbot (streamed)
-    if not reuse_cert:
-        print(f"\n {Color.YELLOW}Preparando entorno y verificando paquetes requeridos...{Color.END}")
-        # apt-get update/install (silencioso pero con streaming)
-        stream_cmd(['apt-get', 'update'], header="Actualizando índices de paquetes...")
-        stream_cmd(['apt-get', 'install', '-y', 'stunnel4', 'certbot'], header="Instalando stunnel4 & certbot (si falta)...")
-
-        # asegurarnos puertos libres: detiene servicios web temporales si están corriendo
-        print(f"\n {Color.YELLOW}Parando nginx/apache temporalmente si existen...{Color.END}")
-        subprocess.run(['systemctl', 'stop', 'nginx'], stderr=subprocess.DEVNULL)
-        subprocess.run(['systemctl', 'stop', 'apache2'], stderr=subprocess.DEVNULL)
-
-        # Ejecutar certbot en modo standalone y mostrar salida en tiempo real
-        cmd = ['certbot', 'certonly', '--standalone', '-d', domain, '--non-interactive', '--agree-tos', '--register-unsafely-without-email']
-        if staging:
-            cmd.insert(-2, '--staging')  # añade --staging antes de --non-interactive por legibilidad
-        rc = stream_cmd(cmd, header=f"Obteniendo certificado SSL para {domain} (standalone)...")
-        if rc != 0:
-            print(f"\n {Color.RED}✗ certbot devolvió código {rc}. Revisa /var/log/letsencrypt/letsencrypt.log{Color.END}")
-            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-            return
-
-        cert_dir = Path(f"/etc/letsencrypt/live/{domain}")
-        if not cert_dir.exists():
-            print(f"\n {Color.RED}✗ Certificado no encontrado después de certbot. Abortando.{Color.END}")
-            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-            return
-
-        print(f"\n {Color.GREEN}✓ Certificado obtenido y guardado en: {cert_dir}{Color.END}")
-
-    # --------------- ahora reutilizar/usar certificado para añadir puerto en stunnel ---------------
+    # Mensaje compacto de progreso
+    print("\n Configurando...")   # 1) preparar e instalar/obtener si hace falta
     try:
-        stunnel_conf_path = Path("/etc/stunnel/stunnel.conf")
-        pem_dest = Path("/etc/stunnel/stunnel.pem")
+        # Si no hay cert: instalar paquetes y pedir cert (silencioso)
+        if not cert_exists:
+            # instalar paquetes sin mostrar output
+            subprocess.run(['apt-get', 'update', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['apt-get', 'install', '-y', 'stunnel4', 'certbot'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-        # concatenar fullchain + privkey en stunnel.pem (si no existe o si pertenece a este domain)
-        if cert_dir:
-            fullchain = cert_dir / "fullchain.pem"
-            privkey = cert_dir / "privkey.pem"
-            if fullchain.exists() and privkey.exists():
-                subprocess.run(['bash', '-c', f'cat "{fullchain}" "{privkey}" > "{pem_dest}"'])
-                subprocess.run(['chmod', '600', str(pem_dest)])
-                print(f"\n {Color.GREEN}✓ Configurando {pem_dest} con certificado {domain}{Color.END}")
+            # intentar detener nginx/apache de forma silenciosa
+            subprocess.run(['systemctl', 'stop', 'nginx'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['systemctl', 'stop', 'apache2'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(0.3)
+
+            # ejecutar certbot standalone, por defecto con --staging para evitar bloqueos
+            cert_cmd = ['certbot', 'certonly', '--standalone', '-d', domain,
+                        '--non-interactive', '--agree-tos', '--register-unsafely-without-email', '--staging']
+            r = subprocess.run(cert_cmd, capture_output=True, text=True)
+
+            if r.returncode != 0:
+                # mensaje corto en caso de fallo
+                err = (r.stderr or r.stdout or "").strip().splitlines()[-1] if (r.stderr or r.stdout) else "error desconocido"
+                print(f" ✗ Error obteniendo certificado: {err}")
+                input("\n Presiona Enter...")
+                return
+
+            # combinar cert+key en stunnel.pem
+            cert_path = f"/etc/letsencrypt/live/{domain}/fullchain.pem"
+            key_path = f"/etc/letsencrypt/live/{domain}/privkey.pem"
+            if Path(cert_path).exists() and Path(key_path).exists():
+                subprocess.run(['bash', '-c', f'cat {cert_path} {key_path} > /etc/stunnel/stunnel.pem'],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                subprocess.run(['chmod', '600', '/etc/stunnel/stunnel.pem'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                cert_exists = True
             else:
-                print(f"\n {Color.YELLOW}! Atención: faltan fullchain/privkey en {cert_dir}. Se intentará añadir la sección pero verifica el .pem manualmente.{Color.END}")
+                print(" ✗ Certificado no encontrado después de certbot.")
+                input("\n Presiona Enter...")
+                return
 
-        # Crear entrada stunnel para el puerto solicitado
-        # generar un nombre de sección único basado en domain y puerto
-        section_name = f"{domain.replace('.', '_')}_{port}"
-        new_section = (
-            f"\n[{section_name}]\n"
-            f"accept = {port}\n"
-            f"connect = 127.0.0.1:22\n"
-            f"cert = /etc/stunnel/stunnel.pem\n"
-            f"TIMEOUTclose = 0\n"
-        )
-
-        # Añadir sección si no existe accept = port ya presente
-        conf_text = ""
-        if stunnel_conf_path.exists():
-            conf_text = stunnel_conf_path.read_text()
-        if f"accept = {port}" in conf_text:
-            print(f"\n {Color.YELLOW}ℹ El puerto {port} ya está configurado en stunnel.conf (skip).{Color.END}")
+        # Añadir sección en /etc/stunnel/stunnel.conf pero sin duplicar accept
+        st_conf_text = STUNNEL_CONF.read_text(errors='ignore') if STUNNEL_CONF.exists() else ""
+        if f"accept = {port}" not in st_conf_text:
+            label = f"mora_{int(time.time())}_{port}"
+            section = f"\n[{label}]\nconnect = 127.0.0.1:22\naccept = {port}\ncert = /etc/stunnel/stunnel.pem\nTIMEOUTclose = 0\n"
+            new_conf = (st_conf_text.rstrip() + "\n\n" + section).strip() + "\n"
+            with open('/etc/stunnel/stunnel.conf', 'w') as f:
+                f.write(new_conf)
         else:
-            with open(stunnel_conf_path, 'a') as f:
-                f.write(new_section)
-            print(f"\n {Color.GREEN}✓ Sección añadida a {stunnel_conf_path} para puerto {port}{Color.END}")
+            # si ya existe, no hacemos nada extra
+            pass
 
-        # Reiniciar stunnel (mostramos estado resumido)
-        print(f"\n {Color.YELLOW}Reiniciando stunnel4...{Color.END}")
-        subprocess.run(['systemctl', 'daemon-reload'], stderr=subprocess.DEVNULL)
-        subprocess.run(['systemctl', 'restart', 'stunnel4'], stderr=subprocess.DEVNULL)
+        # Reiniciar stunnel (silencioso) y abrir puerto (silencioso)
+        print(" Reiniciando stunnel...")
+        subprocess.run(['systemctl', 'daemon-reload'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['systemctl', 'restart', 'stunnel4'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.4)
 
-        # Comprobar si está activo
-        st = subprocess.run(['systemctl', 'is-active', 'stunnel4'], capture_output=True, text=True)
-        if st.returncode == 0:
-            print(f" {Color.GREEN}✓ Stunnel activo{Color.END}")
-        else:
-            print(f" {Color.RED}✗ Stunnel parece no estar activo (revisa logs){Color.END}")
-
-        # Abrir firewall / iptables
-        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
-        subprocess.run(['iptables', '-C', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'], stderr=subprocess.DEVNULL)
-        # si la regla no existía, la añadimos (evitamos duplicados)
-        subprocess.run(['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'], stderr=subprocess.DEVNULL)
-
-        # Configurar forwarding (tu función existente)
+        # Abrir puerto sin mostrar output
         try:
-            moratech.configure_forwarding()
-            print(f"\n {Color.GREEN}✓ Forwarding configurado{Color.END}")
+            subprocess.run(['ufw', 'allow', port], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
-            print(f"\n {Color.YELLOW}! Forwarding: no se pudo ejecutar moratech.configure_forwarding() automáticamente.{Color.END}")
-
-        # Guardar en PROTOCOLS_FILE (actualizar info ssl)
+            pass
         try:
-            protocols = {}
-            if Path(PROTOCOLS_FILE).exists():
-                with open(PROTOCOLS_FILE, 'r') as f:
-                    protocols = json.load(f)
-            if 'ssl' not in protocols:
-                protocols['ssl'] = {}
-            protocols['ssl']['enabled'] = True
-            protocols['ssl']['port'] = int(port)
-            protocols['ssl']['domain'] = domain
-            protocols['ssl']['cert_type'] = 'letsencrypt'
-            with open(PROTOCOLS_FILE, 'w') as f:
-                json.dump(protocols, f, indent=4)
+            subprocess.run(['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', str(port), '-j', 'ACCEPT'],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception:
             pass
 
-        print(f"\n {Color.GREEN}✓ SSL instalado/activado: {domain}:{port}{Color.END}")
-        print(f" {Color.CYAN}Certificados válidos en: /etc/letsencrypt/live/{domain}{Color.END}")
+        # Configurar forwarding (llamamos, pero silencioso)
+        try:
+            moratech.configure_forwarding()
+        except Exception:
+            pass
+
+        # Actualizar protocols.json de forma mínima (si existe)
+        try:
+            prot = {}
+            if PROTOCOLS.exists():
+                with open(PROTOCOLS_FILE, 'r') as f:
+                    prot = json.load(f)
+            prot.setdefault('ssl', {})
+            prot['ssl']['enabled'] = True
+            prot['ssl']['port'] = int(port)
+            if domain:
+                prot['ssl']['domain'] = domain
+                prot['ssl']['cert_type'] = 'letsencrypt'
+            with open(PROTOCOLS_FILE, 'w') as f:
+                json.dump(prot, f, indent=4)
+        except Exception:
+            pass
+
+        # Mensaje final minimal
+        print(" ✓ SSL instalado")
+        input("\n Presiona Enter...")
 
     except Exception as e:
-        print(f"\n {Color.RED}✗ Error configurando stunnel: {e}{Color.END}")
-        import traceback
-        traceback.print_exc()
-
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        print(f" ✗ Error: {str(e)}")
+        input("\n Presiona Enter...")
+        return
 
 # Helper para eliminar un puerto específico interactivo (re-usable)
 def _stop_specific_port_interactive():
