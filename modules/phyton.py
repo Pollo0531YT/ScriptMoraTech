@@ -319,12 +319,12 @@ def stop_proxy():
             pid = unique[port]
             print(f" {Color.GREEN}[{i}]{Color.END} Puerto {port} (PID: {pid})")
 
-        print(f"\n {Color.GREEN}[0]{Color.END} Detener TODOS los proxies")
-        print(f" {Color.RED}[X]{Color.END} Cancelar")
+        print(f"\n {Color.GREEN}[X]{Color.END} Detener TODOS los proxies")
+        print(f" {Color.RED}[0]{Color.END} Cancelar")
         print_line()
 
         choice = input(f" {Color.CYAN}►{Color.END} Selecciona opción: ").strip()
-        if choice.upper() == 'X':
+        if choice.upper() == '0':
             return
 
         # 4) Ejecución de la acción
@@ -345,7 +345,7 @@ def stop_proxy():
             except:
                 pass
 
-        if choice == '0':
+        if choice == 'X':
             confirm = input(f"\n {Color.YELLOW}¿Detener TODOS los proxies? (s/n): {Color.END}").strip().lower()
             if confirm != 's':
                 return
