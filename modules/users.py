@@ -1366,8 +1366,6 @@ def view_checkuser_logs():
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
         input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
-
-
 #MENU MAS IMPORANTE, MENU DE API SERVER PARA RENOVAR, CREAR, ETC##
 def menu_api_server():
     """Menú del servidor API"""
@@ -1513,7 +1511,6 @@ def start_api_server():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     menu_api_server()
-
 
 def stop_api_server():
     """Detener servidor API"""

@@ -14,7 +14,7 @@ import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from modules import common, extras, users as users_module, ssl, phyton, badvpn, v2ray, expire_setup
+from modules import common, extras, users as users_module, ssl, phyton, badvpn, v2ray, slowdns
 
 # Colores para terminal
 class Color:
@@ -307,7 +307,7 @@ def protocols_menu():
         print(f"{Color.GREEN}1.{Color.END} ➮ SSL/TLS")
         print(f"{Color.GREEN}2.{Color.END} ➮ PROXY PYTHON")
         print(f"{Color.GREEN}3.{Color.END} ➮ V2RAY SWITCH")
-        print(f"{Color.GREEN}4.{Color.END} ➮ SlowDNS (desarrollo...)")
+        print(f"{Color.GREEN}4.{Color.END} ➮ SlowDNS")
 
         print_line()
         print(f" {Color.CYAN}HERRAMIENTAS Y SERVICIOS{Color.END}")
@@ -326,6 +326,8 @@ def protocols_menu():
             phyton.menu_phyton()
         elif choice == '3':
             v2ray.menu_v2ray()
+        elif choice == '4':
+            slowdns.menu_slowdns()
         elif choice == '5':
             badvpn.menu_badvpn()
         elif choice == '6':
