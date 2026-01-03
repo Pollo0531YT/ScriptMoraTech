@@ -573,12 +573,11 @@ def save_users(users_to_sync, full_database=None):
             subprocess.run(['chpasswd'], input=f"{username}:{password}\n", text=True,
                          stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             
-            # 3. Actualizar Expiración en Linux con MARGEN (+2 días)
             # Esto evita el error "Account expired" porque Linux vence al inicio del día.
             expires = data.get('expires')
             if expires:
                 expire_dt = datetime.fromisoformat(expires)
-                # Le damos 2 días de gracia a Linux; tu Cron de las 18:00 lo borrará antes.
+                # Le damos +1 días de gracia a Linux
                 linux_margin = (expire_dt + timedelta(days=1)).strftime('%Y-%m-%d')
                 subprocess.run(['usermod', '-e', linux_margin, '-U', '-s', '/bin/false', username], 
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
