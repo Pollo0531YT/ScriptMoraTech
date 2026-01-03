@@ -90,20 +90,25 @@ def api_vps_add():
     """Agregar una VPS"""
     data = request.get_json()
     nombre = data.get('nombre')
-    url = data.get('url')
+    domain = data.get('domain')  # ej: directo2.moratech.work
+    port_api = data.get('port_api', '9000')
+    port_check = data.get('port_check', '8888')
     
-    if not nombre or not url:
-        return jsonify({'error': 'Nombre y URL requeridos'}), 400
+    if not nombre or not domain:
+        return jsonify({'error': 'Nombre y dominio requeridos'}), 400
     
     config = load_vps_config()
     
     # Generar ID
     max_id = max([v['id'] for v in config['vps_list']], default=0)
     
+    # Construir URLs completas
     nueva_vps = {
         'id': max_id + 1,
         'nombre': nombre,
-        'url': url.rstrip('/'),  # Quitar / al final
+        'domain': domain,
+        'url_api': f'http://{domain}:{port_api}',
+        'url_checkuser': f'http://{domain}:{port_check}/checkUser',
         'activo': True
     }
     
@@ -111,6 +116,189 @@ def api_vps_add():
     save_vps_config(config)
     
     return jsonify({'success': True, 'vps': nueva_vps}), 200
+
+@app.route('/api/gestionar-token', methods=['POST'])
+@require_auth
+def api_gestionar_token():
+    """
+    Gestionar token en VPS seleccionadas
+    - Si existe en CheckUser → RENOVAR
+    - Si no existe → CREAR NUEVO
+    """
+    data = request.get_json()
+    
+    nombre = data.get('nombre')
+    token = data.get('token')
+    dias = data.get('dias', 30)
+    referencia = data.get('referencia', '')
+    origen = data.get('origen', 'web')
+    vps_ids = data.get('vps_ids', [])
+    
+    if not nombre or not token:
+        return jsonify({'error': 'Nombre y token requeridos'}), 400
+    
+    config = load_vps_config()
+    resultados = []
+    
+    # Si no hay VPS seleccionadas, usar todas activas
+    if not vps_ids:
+        vps_ids = [v['id'] for v in config['vps_list'] if v['activo']]
+    
+    for vps in config['vps_list']:
+        if vps['id'] not in vps_ids or not vps['activo']:
+            continue
+        
+        try:
+            # 1. Consultar CheckUser para saber si existe
+            status = check_token_status(vps['url_checkuser'], token)
+            
+            if status == 'not_exist':
+                # CREAR NUEVO
+                endpoint = f"{vps['url_api']}/api/token"
+                payload = {
+                    'nombre': nombre,
+                    'token': token,
+                    'dias': dias,
+                    'referencia': referencia,
+                    'origen': origen
+                }
+                accion = 'creado'
+            
+            elif status == 'exists':
+                # RENOVAR
+                endpoint = f"{vps['url_api']}/api/renovar"
+                payload = {
+                    'user': token,
+                    'dias': dias,
+                    'referencia': referencia,
+                    'origen': origen
+                }
+                accion = 'renovado'
+            
+            else:
+                # ERROR en CheckUser
+                resultados.append({
+                    'vps_nombre': vps['nombre'],
+                    'vps_id': vps['id'],
+                    'success': False,
+                    'error': 'CheckUser no responde'
+                })
+                continue
+            
+            # 2. Ejecutar acción (crear o renovar)
+            response = requests.post(
+                endpoint,
+                headers={
+                    'Content-Type': 'application/json',
+                    'X-Auth-Key': SECRET_KEY
+                },
+                json=payload,
+                timeout=10
+            )
+            
+            result = response.json()
+            result['vps_nombre'] = vps['nombre']
+            result['vps_id'] = vps['id']
+            result['accion'] = accion
+            resultados.append(result)
+        
+        except Exception as e:
+            resultados.append({
+                'vps_nombre': vps['nombre'],
+                'vps_id': vps['id'],
+                'success': False,
+                'error': str(e)
+            })
+    
+    return jsonify({
+        'resultados': resultados,
+        'total': len(resultados),
+        'exitosos': len([r for r in resultados if r.get('success')])
+    }), 200
+
+def check_token_status(vps_url_checkuser, token):
+    """
+    Consultar CheckUser para saber si el token existe
+    Returns:
+        - 'exists' si devuelve fecha (ej: "11012026")
+        - 'not_exist' si devuelve "Not exist"
+        - 'error' si no puede conectar
+    """
+    try:
+        response = requests.post(
+            vps_url_checkuser,
+            json={'user': token},
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            result = response.text.strip()
+            
+            # CheckUser devuelve texto plano, no JSON
+            if result == "Not exist":
+                return 'not_exist'
+            elif len(result) == 8 and result.isdigit():  # Formato ddmmyyyy
+                return 'exists'
+            else:
+                return 'error'
+        else:
+            return 'error'
+    
+    except Exception as e:
+        return 'error'
+
+
+@app.route('/api/borrar-token', methods=['POST'])
+@require_auth
+def api_borrar_token():
+    """Borrar token de VPS seleccionadas"""
+    data = request.get_json()
+    
+    token = data.get('token')
+    vps_ids = data.get('vps_ids', [])
+    
+    if not token:
+        return jsonify({'error': 'Token requerido'}), 400
+    
+    config = load_vps_config()
+    resultados = []
+    
+    if not vps_ids:
+        vps_ids = [v['id'] for v in config['vps_list'] if v['activo']]
+    
+    for vps in config['vps_list']:
+        if vps['id'] not in vps_ids or not vps['activo']:
+            continue
+        
+        try:
+            response = requests.post(
+                f"{vps['url_api']}/api/borrar",
+                headers={
+                    'Content-Type': 'application/json',
+                    'X-Auth-Key': SECRET_KEY
+                },
+                json={'user': token},
+                timeout=10
+            )
+            
+            result = response.json()
+            result['vps_nombre'] = vps['nombre']
+            result['vps_id'] = vps['id']
+            resultados.append(result)
+        
+        except Exception as e:
+            resultados.append({
+                'vps_nombre': vps['nombre'],
+                'vps_id': vps['id'],
+                'success': False,
+                'error': str(e)
+            })
+    
+    return jsonify({
+        'resultados': resultados,
+        'total': len(resultados),
+        'exitosos': len([r for r in resultados if r.get('success')])
+    }), 200
 
 @app.route('/api/vps-remove/<int:vps_id>', methods=['DELETE'])
 @require_auth

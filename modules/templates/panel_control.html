@@ -41,8 +41,15 @@
             display: inline-block;
         }
         .btn:hover { opacity: 0.9; }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
         .btn-success {
             background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
         }
         
         /* Formulario */
@@ -107,6 +114,10 @@
             background: #fee2e2;
             border-left: 4px solid #ef4444;
         }
+        .result-warning {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+        }
         
         .tabs {
             display: flex;
@@ -144,40 +155,45 @@
         
         <!-- Tabs -->
         <div class="tabs">
-            <div class="tab active" onclick="showTab('activar')">➕ Activar Token</div>
-            <div class="tab" onclick="showTab('renovar')">🔄 Renovar Token</div>
+            <div class="tab active" onclick="showTab('gestionar')">💳 Gestionar Token</div>
+            <div class="tab" onclick="showTab('borrar')">🗑️ Borrar Token</div>
         </div>
         
-        <!-- Tab: Activar Token -->
-        <div id="tab-activar" class="tab-content active">
-            <h2 style="color: #667eea; margin-bottom: 20px;">Activar Token Nuevo</h2>
+        <!-- Tab: Gestionar Token (Crear o Renovar automático) -->
+        <div id="tab-gestionar" class="tab-content active">
+            <h2 style="color: #667eea; margin-bottom: 20px;">Gestionar Token</h2>
+            <p style="color: #666; margin-bottom: 20px;">
+                El sistema verificará automáticamente si el token existe:<br>
+                • <strong>Si existe:</strong> Lo renovará sumando días<br>
+                • <strong>Si no existe:</strong> Lo creará nuevo
+            </p>
             
             <div class="form-group">
                 <label>Nombre del Cliente</label>
-                <input type="text" id="nombreActivar" placeholder="Ej: Pedro Castro">
+                <input type="text" id="nombreGestionar" placeholder="Ej: Pedro Castro">
             </div>
             
             <div class="form-group">
                 <label>Token de Acceso</label>
-                <input type="text" id="tokenActivar" placeholder="Ej: abc123token456">
+                <input type="text" id="tokenGestionar" placeholder="Ej: abc123token456">
             </div>
             
             <div class="form-group">
                 <label>Días de Servicio</label>
-                <input type="number" id="diasActivar" value="30">
+                <input type="number" id="diasGestionar" value="30">
             </div>
             
             <div class="form-group">
                 <label>Referencia Bancaria (Opcional)</label>
-                <input type="text" id="referenciaActivar" placeholder="Ej: 0531">
+                <input type="text" id="referenciaGestionar" placeholder="Ej: 0531">
             </div>
             
             <div class="form-group">
                 <label>Origen del Pago</label>
-                <select id="origenActivar">
+                <select id="origenGestionar">
+                    <option value="web" selected>Pago Web</option>
                     <option value="deposito">Depósito Bancario</option>
                     <option value="whatsapp">WhatsApp</option>
-                    <option value="web">Pago Web</option>
                     <option value="manual">Manual</option>
                 </select>
             </div>
@@ -185,59 +201,42 @@
             <div class="vps-selector">
                 <h3 style="margin-bottom: 15px;">Seleccionar VPS</h3>
                 <label class="vps-checkbox">
-                    <input type="checkbox" id="selectAllActivar" onchange="toggleAllVPS('activar')">
+                    <input type="checkbox" id="selectAllGestionar" onchange="toggleAllVPS('gestionar')">
                     <strong>Seleccionar TODAS</strong>
                 </label>
                 <hr style="margin: 10px 0;">
-                <div id="vpsListActivar"></div>
+                <div id="vpsListGestionar"></div>
             </div>
             
-            <button class="btn btn-success" style="width: 100%; padding: 15px; font-size: 16px;" onclick="activarToken()">
-                🚀 ACTIVAR EN VPS SELECCIONADAS
+            <button class="btn btn-success" style="width: 100%; padding: 15px; font-size: 16px;" id="btnGestionar" onclick="gestionarToken()">
+                🚀 GESTIONAR TOKEN EN VPS SELECCIONADAS
             </button>
         </div>
         
-        <!-- Tab: Renovar Token -->
-        <div id="tab-renovar" class="tab-content">
-            <h2 style="color: #667eea; margin-bottom: 20px;">Renovar Token Existente</h2>
+        <!-- Tab: Borrar Token -->
+        <div id="tab-borrar" class="tab-content">
+            <h2 style="color: #667eea; margin-bottom: 20px;">Borrar Token</h2>
+            <p style="color: #dc2626; margin-bottom: 20px; font-weight: bold;">
+                ⚠️ Esta acción eliminará el token de todas las VPS seleccionadas
+            </p>
             
             <div class="form-group">
-                <label>Token a Renovar</label>
-                <input type="text" id="tokenRenovar" placeholder="Ej: abc123token456">
-            </div>
-            
-            <div class="form-group">
-                <label>Días a Sumar</label>
-                <input type="number" id="diasRenovar" value="30">
-            </div>
-            
-            <div class="form-group">
-                <label>Referencia Bancaria (Opcional)</label>
-                <input type="text" id="referenciaRenovar" placeholder="Ej: 0531">
-            </div>
-            
-            <div class="form-group">
-                <label>Origen del Pago</label>
-                <select id="origenRenovar">
-                    <option value="deposito">Depósito Bancario</option>
-                    <option value="whatsapp">WhatsApp</option>
-                    <option value="web">Pago Web</option>
-                    <option value="manual">Manual</option>
-                </select>
+                <label>Token a Eliminar</label>
+                <input type="text" id="tokenBorrar" placeholder="Ej: abc123token456">
             </div>
             
             <div class="vps-selector">
                 <h3 style="margin-bottom: 15px;">Seleccionar VPS</h3>
                 <label class="vps-checkbox">
-                    <input type="checkbox" id="selectAllRenovar" onchange="toggleAllVPS('renovar')">
+                    <input type="checkbox" id="selectAllBorrar" onchange="toggleAllVPS('borrar')">
                     <strong>Seleccionar TODAS</strong>
                 </label>
                 <hr style="margin: 10px 0;">
-                <div id="vpsListRenovar"></div>
+                <div id="vpsListBorrar"></div>
             </div>
             
-            <button class="btn btn-success" style="width: 100%; padding: 15px; font-size: 16px;" onclick="renovarToken()">
-                🔄 RENOVAR EN VPS SELECCIONADAS
+            <button class="btn btn-danger" style="width: 100%; padding: 15px; font-size: 16px;" id="btnBorrar" onclick="borrarToken()">
+                🗑️ ELIMINAR TOKEN DE VPS SELECCIONADAS
             </button>
         </div>
         
@@ -255,22 +254,22 @@
             const response = await fetch('/api/vps-list');
             vpsList = await response.json();
             
-            const htmlActivar = vpsList.filter(v => v.activo).map(vps => `
+            const htmlGestionar = vpsList.filter(v => v.activo).map(vps => `
                 <label class="vps-checkbox">
-                    <input type="checkbox" class="vps-check-activar" value="${vps.id}">
-                    ${vps.nombre}
+                    <input type="checkbox" class="vps-check-gestionar" value="${vps.id}">
+                    ${vps.nombre} (${vps.domain})
                 </label>
             `).join('');
             
-            const htmlRenovar = vpsList.filter(v => v.activo).map(vps => `
+            const htmlBorrar = vpsList.filter(v => v.activo).map(vps => `
                 <label class="vps-checkbox">
-                    <input type="checkbox" class="vps-check-renovar" value="${vps.id}">
-                    ${vps.nombre}
+                    <input type="checkbox" class="vps-check-borrar" value="${vps.id}">
+                    ${vps.nombre} (${vps.domain})
                 </label>
             `).join('');
             
-            document.getElementById('vpsListActivar').innerHTML = htmlActivar;
-            document.getElementById('vpsListRenovar').innerHTML = htmlRenovar;
+            document.getElementById('vpsListGestionar').innerHTML = htmlGestionar;
+            document.getElementById('vpsListBorrar').innerHTML = htmlBorrar;
         }
         
         function toggleAllVPS(tab) {
@@ -291,13 +290,13 @@
                         .map(cb => parseInt(cb.value));
         }
         
-        async function activarToken() {
-            const nombre = document.getElementById('nombreActivar').value;
-            const token = document.getElementById('tokenActivar').value;
-            const dias = parseInt(document.getElementById('diasActivar').value);
-            const referencia = document.getElementById('referenciaActivar').value;
-            const origen = document.getElementById('origenActivar').value;
-            const vps_ids = getSelectedVPS('activar');
+        async function gestionarToken() {
+            const nombre = document.getElementById('nombreGestionar').value;
+            const token = document.getElementById('tokenGestionar').value;
+            const dias = parseInt(document.getElementById('diasGestionar').value);
+            const referencia = document.getElementById('referenciaGestionar').value;
+            const origen = document.getElementById('origenGestionar').value;
+            const vps_ids = getSelectedVPS('gestionar');
             
             if (!nombre || !token) {
                 alert('Nombre y Token son requeridos');
@@ -309,22 +308,30 @@
                 return;
             }
             
-            const response = await fetch('/api/activar-token', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({nombre, token, dias, referencia, origen, vps_ids})
-            });
+            const btn = document.getElementById('btnGestionar');
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Procesando...';
             
-            const data = await response.json();
-            mostrarResultados(data);
+            try {
+                const response = await fetch('/api/gestionar-token', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({nombre, token, dias, referencia, origen, vps_ids})
+                });
+                
+                const data = await response.json();
+                mostrarResultados(data);
+            } catch (error) {
+                alert('Error: ' + error);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🚀 GESTIONAR TOKEN EN VPS SELECCIONADAS';
+            }
         }
         
-        async function renovarToken() {
-            const token = document.getElementById('tokenRenovar').value;
-            const dias = parseInt(document.getElementById('diasRenovar').value);
-            const referencia = document.getElementById('referenciaRenovar').value;
-            const origen = document.getElementById('origenRenovar').value;
-            const vps_ids = getSelectedVPS('renovar');
+        async function borrarToken() {
+            const token = document.getElementById('tokenBorrar').value;
+            const vps_ids = getSelectedVPS('borrar');
             
             if (!token) {
                 alert('Token es requerido');
@@ -336,21 +343,48 @@
                 return;
             }
             
-            const response = await fetch('/api/renovar-token', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({token, dias, referencia, origen, vps_ids})
-            });
+            if (!confirm(`¿Estás seguro de eliminar el token ${token} de las VPS seleccionadas?`)) {
+                return;
+            }
             
-            const data = await response.json();
-            mostrarResultados(data);
+            const btn = document.getElementById('btnBorrar');
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Eliminando...';
+            
+            try {
+                const response = await fetch('/api/borrar-token', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({token, vps_ids})
+                });
+                
+                const data = await response.json();
+                mostrarResultados(data);
+            } catch (error) {
+                alert('Error: ' + error);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '🗑️ ELIMINAR TOKEN DE VPS SELECCIONADAS';
+            }
         }
         
         function mostrarResultados(data) {
             const html = data.resultados.map(r => {
-                const className = r.success ? 'result-success' : 'result-error';
-                const icon = r.success ? '✓' : '✗';
-                const msg = r.success ? 'Exitoso' : (r.error || 'Error');
+                let className = r.success ? 'result-success' : 'result-error';
+                let icon = r.success ? '✓' : '✗';
+                let msg = r.success ? 
+                    (r.accion ? `${r.accion.toUpperCase()}` : 'Exitoso') : 
+                    (r.error || 'Error');
+                
+                // Si fue renovado o creado, agregar badge especial
+                if (r.accion === 'renovado') {
+                    className = 'result-warning';
+                    icon = '🔄';
+                    msg = 'RENOVADO';
+                } else if (r.accion === 'creado') {
+                    icon = '✨';
+                    msg = 'CREADO NUEVO';
+                }
                 
                 return `
                     <div class="result-item ${className}">
