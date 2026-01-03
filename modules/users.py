@@ -90,63 +90,55 @@ def agregar_usuario():
         add_token_user()
 
 def add_ssh_user():
-    """Agregar usuario SSH con vencimiento a las 6pm (usa ejecutar_creacion_usuario)."""
-    users = load_users() or {}
-
-    clear_screen()
-    print_banner()
+    """Agregar usuario SSH con vencimiento a las 6pm"""
+    users = load_users()
     print(f"\n{Color.CYAN}--- NUEVO USUARIO SSH ---{Color.END}\n")
-
     username = input(f"{Color.GREEN}Nombre de usuario: {Color.END}").strip()
     if not username or username in users:
         print(f"{Color.RED}✗ El usuario ya existe o es inválido{Color.END}")
         input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
         return
-
+    
     password = input(f"{Color.GREEN}Contraseña: {Color.END}").strip()
-
     days_input = input(f"{Color.GREEN}Días de duración (0 = hoy 6pm): {Color.END}").strip()
-    # Si days_input no es un entero válido, según tu versión original SSH permitía y ponía expires = None
     try:
         days = int(days_input)
-    except Exception:
-        days = None  # -> ejecutar_creacion_usuario interpretará days=None como sin expiración
+        expire_date = (datetime.now().date() + timedelta(days=days))
+        expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
+    except:
+        expires = None
 
     max_conn = input(f"{Color.GREEN}Máximas conexiones: {Color.END}").strip()
-    max_conn = int(max_conn) if str(max_conn).isdigit() else 1
 
+    max_conn = int(max_conn) if max_conn.isdigit() else 1
+    new_user_data = {
+        "password": password,
+        "role": "user", "type": "ssh",
+        "created": datetime.now().isoformat(),
+        "expires": expires,
+        "max_connections": max_conn,
+        "enabled": True
+    }
+
+    users[username] = new_user_data
     print(f"\n{Color.YELLOW}⏳ Creando acceso en el sistema...{Color.END}", end="\r", flush=True)
 
-    success, msg, expires = ejecutar_creacion_usuario(
-        username, password, days, user_type="ssh", max_conn=max_conn
-    )
-
-    if success:
+    if save_users({username: new_user_data}, full_database=users):
         print(f"{' ' * 40}\r{Color.GREEN}✓ Usuario SSH creado exitosamente{Color.END}")
-        try: moratech.log_action("admin", f"Usuario SSH creado: {username}")
-        except: pass
-        if expires:
-            print(f"\n {Color.CYAN}Expira: {Color.GREEN}{expires}{Color.END}")
+        moratech.log_action("admin", f"Usuario SSH creado: {username}")
     else:
-        print(f"\n{Color.RED}✗ {msg}{Color.END}")
-
+        print(f"\n{Color.RED}✗ Error creando usuario en el sistema{Color.END}")
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
-def add_token_user():
-    """Agregar usuario Token con vencimiento a las 6pm (usa ejecutar_creacion_usuario)."""
-    token_config = load_token_config()
-    users = load_users() or {}
 
-    clear_screen()
-    print_banner()
+def add_token_user():
+    """Agregar usuario Token con vencimiento a las 6pm"""
+    token_config = load_token_config()
+    users = load_users()
     print(f"\n{Color.CYAN}--- NUEVO USUARIO TOKEN ---{Color.END}\n")
 
     if not token_config.get('token_password'):
         token_pass = input(f"{Color.GREEN}Contraseña maestra para tokens: {Color.END}").strip()
-        if not token_pass:
-            print(f"{Color.RED}✗ Se requiere contraseña maestra válida{Color.END}")
-            input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-            return
         token_config['token_password'] = token_pass
         save_token_config(token_config)
 
@@ -159,34 +151,33 @@ def add_token_user():
         return
 
     days_input = input(f"{Color.GREEN}Días de duración (0 = hoy 6pm): {Color.END}").strip()
-    # En la versión original si days no era convertible --> ERROR y se abortaba
     try:
         days = int(days_input)
-    except Exception:
+        expire_date = (datetime.now().date() + timedelta(days=days))
+        expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
+    except:
         print(f"{Color.RED}✗ Valor de días inválido{Color.END}")
-        input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
         return
 
+    new_token_data = {
+        "password": token_config['token_password'],
+        "role": "user", "type": "token",
+        "display_name": display_name,
+        "created": datetime.now().isoformat(),
+        "expires": expires,
+        "max_connections": 1,
+        "enabled": True
+    }
+
+    users[token_input] = new_token_data
     print(f"\n{Color.YELLOW}⏳ Generando token en el sistema...{Color.END}", end="\r", flush=True)
 
-    success, msg, expires = ejecutar_creacion_usuario(
-        token_input,
-        token_config['token_password'],
-        days,
-        user_type="token",
-        max_conn=1,
-        display_name=display_name
-    )
-
-    if success:
+    if save_users({token_input: new_token_data}, full_database=users):
         print(f"{' ' * 40}\r{Color.GREEN}✓ Usuario token creado correctamente{Color.END}")
-        try: moratech.log_action("admin", f"Usuario token creado: {display_name} ({token_input})")
-        except: pass
-        if expires:
-            print(f"\n {Color.CYAN}Expira: {Color.GREEN}{expires}{Color.END}")
+        moratech.log_action("admin", f"Usuario token creado: {display_name} ({token_input})")
     else:
-        print(f"\n{Color.RED}✗ {msg}{Color.END}")
-
+        print(f"\n{Color.RED}✗ Error al registrar el token{Color.END}")
+        
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def ejecutar_creacion_usuario(username, password, days=None, user_type="ssh",
