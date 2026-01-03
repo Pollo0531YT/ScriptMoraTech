@@ -402,114 +402,182 @@ if __name__ == '__main__':
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 def stop_proxy():
-    """Detener Proxy Python"""
+    """Detener Proxy Python (robusto: usa pgrep + lsof/ss, no depende de netstat)."""
+    import re
+    from pathlib import Path
+    import shutil
     clear_screen()
     print_banner()
     print_line()
     print(f" {Color.CYAN}DETENER PROXY PYTHON{Color.END}")
     print_line()
-    
+
     try:
-        # Mostrar proxies activos
-        result = subprocess.run(['ps', 'aux'], capture_output=True, text=True)
-        proxy_processes = []
-        
-        for line in result.stdout.split('\n'):
-            if 'proxy.py' in line or 'pythonwe' in line:
-                if 'grep' not in line:
-                    # Extraer puerto del proceso
-                    import re
-                    match = re.search(r'proxy\.py\s+(\d+)', line)
-                    if match:
-                        port = match.group(1)
-                    else:
-                        # Verificar en netstat
-                        net_result = subprocess.run(['netstat', '-tlnp'], capture_output=True, text=True)
-                        for net_line in net_result.stdout.split('\n'):
-                            if 'python' in net_line:
-                                port_match = re.search(r':(\d+)\s', net_line)
-                                if port_match:
-                                    port = port_match.group(1)
-                                    break
-                        else:
-                            port = "desconocido"
-                    
-                    pid = line.split()[1]
-                    proxy_processes.append({'pid': pid, 'port': port, 'line': line})
-        
-        if not proxy_processes:
-            print(f"\n {Color.YELLOW}No hay proxies Python activos{Color.END}")
+        # 1) Encontrar PIDs relevantes (proxy.py / pythonwe)
+        pids = set()
+
+        def safe_run(cmd):
+            try:
+                return subprocess.run(cmd, capture_output=True, text=True, check=False)
+            except Exception:
+                return None
+
+        # pgrep first (fast)
+        for pattern in ['pythonwe', 'proxy.py']:
+            r = safe_run(['pgrep', '-f', pattern])
+            if r and r.stdout.strip():
+                for ln in r.stdout.splitlines():
+                    ln = ln.strip()
+                    if ln.isdigit():
+                        pids.add(ln)
+
+        # fallback: ps aux search
+        if not pids:
+            r = safe_run(['ps', 'aux'])
+            if r and r.stdout:
+                for line in r.stdout.splitlines():
+                    if ('proxy.py' in line or 'pythonwe' in line) and 'grep' not in line:
+                        parts = line.split()
+                        if len(parts) >= 2 and parts[1].isdigit():
+                            pids.add(parts[1])
+
+        if not pids:
+            print(f"\n {Color.YELLOW}No hay proxies Python activos (no se encontraron pids){Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
-        
-        # Mostrar proxies encontrados
-        print(f"\n {Color.YELLOW}Proxies Python activos:{Color.END}")
-        unique_ports = {}
-        for proc in proxy_processes:
-            if proc['port'] not in unique_ports:
-                unique_ports[proc['port']] = proc['pid']
-        
-        ports_list = list(unique_ports.keys())
+
+        # 2) Para cada PID intentar detectar puertos (lsof preferible, si no -> ss)
+        pid_to_ports = {}
+        lsof_ok = shutil.which('lsof') is not None
+
+        ss_output = None
+        if not lsof_ok:
+            # obtener ss output una sola vez para fallback
+            ss_r = safe_run(['ss', '-tlnp'])
+            ss_output = ss_r.stdout if ss_r and ss_r.stdout else ''
+
+        for pid in pids:
+            ports = set()
+            if lsof_ok:
+                r = safe_run(['lsof', '-Pan', '-p', pid, '-iTCP', '-sTCP:LISTEN'])
+                if r and r.stdout:
+                    for ln in r.stdout.splitlines()[1:]:
+                        m = re.search(r':(\d+)->|:(\d+)\s', ln)
+                        if m:
+                            port = m.group(1) or m.group(2)
+                            if port:
+                                ports.add(port)
+            # fallback using ss output (pid=1234 in the "users:" field)
+            if not ports and ss_output is not None:
+                for ln in ss_output.splitlines():
+                    if f"pid={pid}" in ln or f"pid={pid}," in ln:
+                        m = re.search(r':(\d+)\s', ln)
+                        if m:
+                            ports.add(m.group(1))
+            if not ports:
+                ports.add("desconocido")
+
+            pid_to_ports[pid] = sorted(list(ports))
+
+        # 3) Mostrar opciones al usuario
+        print(f"\n {Color.YELLOW}Proxies Python detectados:{Color.END}")
+        # construir lista única de (port->pid) priorizando puertos reales
+        unique = {}
+        for pid, ports in pid_to_ports.items():
+            for port in ports:
+                if port not in unique:
+                    unique[port] = pid
+
+        ports_list = list(unique.keys())
         for i, port in enumerate(ports_list, 1):
-            pid = unique_ports[port]
+            pid = unique[port]
             print(f" {Color.GREEN}[{i}]{Color.END} Puerto {port} (PID: {pid})")
-        
+
         print(f"\n {Color.GREEN}[0]{Color.END} Detener TODOS los proxies")
         print(f" {Color.RED}[X]{Color.END} Cancelar")
         print_line()
-        
+
         choice = input(f" {Color.CYAN}►{Color.END} Selecciona opción: ").strip()
-        
         if choice.upper() == 'X':
             return
-        
+
+        # 4) Ejecución de la acción
+        def safe_kill(pid):
+            try:
+                subprocess.run(['kill', '-9', str(pid)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except:
+                pass
+
+        def remove_iptables_port(port):
+            try:
+                subprocess.run(['iptables', '-D', 'INPUT', '-p', 'tcp', '--dport', str(port), '-j', 'ACCEPT'],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except:
+                pass
+            try:
+                subprocess.run(['ufw', 'delete', 'allow', str(port)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            except:
+                pass
+
         if choice == '0':
-            # Detener todos
             confirm = input(f"\n {Color.YELLOW}¿Detener TODOS los proxies? (s/n): {Color.END}").strip().lower()
             if confirm != 's':
                 return
-            
-            subprocess.run(['pkill', '-f', 'pythonwe'], stderr=subprocess.DEVNULL)
-            subprocess.run(['pkill', '-f', 'proxy.py'], stderr=subprocess.DEVNULL)
-            subprocess.run(['screen', '-S', 'pythonwe', '-X', 'quit'], stderr=subprocess.DEVNULL)
-            
-            # Limpiar config
-            with open(PROTOCOLS_FILE, 'r') as f:
-                protocols = json.load(f)
-            
-            protocols['proxy']['enabled'] = False
-            
-            with open(PROTOCOLS_FILE, 'w') as f:
-                json.dump(protocols, f, indent=4)
-            
+            # kill by name + screen quit
+            subprocess.run(['pkill', '-f', 'pythonwe'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['pkill', '-f', 'proxy.py'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(['screen', '-S', 'pythonwe', '-X', 'quit'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            # remove iptables for detected ports
+            for port in ports_list:
+                if port != "desconocido":
+                    remove_iptables_port(port)
+            # update config
+            try:
+                with open(PROTOCOLS_FILE, 'r') as f:
+                    protocols = json.load(f)
+                protocols.setdefault('proxy', {})['enabled'] = False
+                protocols['proxy'].pop('port', None)
+                with open(PROTOCOLS_FILE, 'w') as f:
+                    json.dump(protocols, f, indent=4)
+            except Exception:
+                pass
             print(f"\n {Color.GREEN}✓ Todos los proxies detenidos{Color.END}")
             moratech.log_action("admin", "Todos los proxies detenidos")
-            
-        else:
-            # Detener proxy específico
-            try:
-                idx = int(choice) - 1
-                if 0 <= idx < len(ports_list):
-                    port = ports_list[idx]
-                    pid = unique_ports[port]
-                    
-                    # Matar proceso específico
-                    subprocess.run(['kill', '-9', pid], stderr=subprocess.DEVNULL)
-                    
-                    # Cerrar puerto en firewall
-                    subprocess.run(['iptables', '-D', 'INPUT', '-p', 'tcp', '--dport', port, '-j', 'ACCEPT'], stderr=subprocess.DEVNULL)
-                    
-                    print(f"\n {Color.GREEN}✓ Proxy en puerto {port} detenido{Color.END}")
-                    moratech.log_action("admin", f"Proxy puerto {port} detenido")
-                else:
-                    print(f" {Color.RED}✗ Opción inválida{Color.END}")
-            except ValueError:
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+
+        # user selected single
+        try:
+            idx = int(choice) - 1
+            if 0 <= idx < len(ports_list):
+                port = ports_list[idx]
+                pid = unique[port]
+                # kill and clean
+                safe_kill(pid)
+                remove_iptables_port(port)
+                # try to also quit screen session
+                subprocess.run(['screen', '-S', 'pythonwe', '-X', 'quit'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                # update config: if the port matches protocols.json remove it
+                try:
+                    with open(PROTOCOLS_FILE, 'r') as f:
+                        protocols = json.load(f)
+                    if protocols.get('proxy', {}).get('port') == int(port):
+                        protocols['proxy']['enabled'] = False
+                        protocols['proxy'].pop('port', None)
+                        with open(PROTOCOLS_FILE, 'w') as f:
+                            json.dump(protocols, f, indent=4)
+                except Exception:
+                    pass
+
+                print(f"\n {Color.GREEN}✓ Proxy en puerto {port} detenido{Color.END}")
+                moratech.log_action("admin", f"Proxy puerto {port} detenido")
+            else:
                 print(f" {Color.RED}✗ Opción inválida{Color.END}")
-        
+        except ValueError:
+            print(f" {Color.RED}✗ Opción inválida{Color.END}")
+
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
         import traceback
         traceback.print_exc()
-    
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
- 
