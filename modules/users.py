@@ -180,7 +180,7 @@ def add_token_user():
         print(f"\n{Color.RED}✗ Error al registrar el token{Color.END}")
         
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-    
+
 def editar_usuario():
     """Editar o renovar usuario - Optimización Instantánea"""
     clear_screen()
@@ -593,7 +593,7 @@ def save_users(users_to_sync, full_database=None):
             if expires:
                 expire_dt = datetime.fromisoformat(expires)
                 # Le damos 2 días de gracia a Linux; tu Cron de las 18:00 lo borrará antes.
-                linux_margin = (expire_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+                linux_margin = (expire_dt + timedelta(days=2)).strftime('%Y-%m-%d')
                 subprocess.run(['usermod', '-e', linux_margin, '-U', '-s', '/bin/false', username], 
                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             else:
