@@ -33,12 +33,12 @@ def control_usuarios_menu():
         print_line()
         print(f" {Color.GREEN}[09]{Color.END} ➮ BACKUP USUARIOS")
         print_line()
-        print(f" {Color.GREEN}[11]{Color.END} ➮ BOT API")
-        print(f" {Color.GREEN}[12]{Color.END} ➮ BOT TELEGRAM")
+        print(f" {Color.GREEN}[11]{Color.END} ➮ API INDIVIDUAL")
+        print(f" {Color.GREEN}[12]{Color.END} ➮ API MASTER")
         print_line()
         print(f" {Color.GREEN}[13]{Color.END} ➮ CHECKUSER ONLINE")    
         print_line()
-        print(f" {Color.GREEN}[12]{Color.END} ➮ REINICIAR CONTRASEÑA TOKEN")
+        print(f" {Color.GREEN}[14]{Color.END} ➮ REINICIAR CONTRASEÑA TOKEN")
         print_line()
         print(f" {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}Volver{Color.END}")
         print_line()
@@ -62,6 +62,8 @@ def control_usuarios_menu():
         elif choice == '11':
             menu_api_server()
         elif choice == '12':
+            start_api_general_server()
+        elif choice == '14':
             reset_token_password()
         elif choice == '0':
             break
@@ -1428,6 +1430,79 @@ def menu_api_server():
         return
     else:
         menu_api_server()
+
+def start_api_general_server():
+    """Iniciar servidor API General (VPS Central)"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}INICIAR API GENERAL (Dashboard Central){Color.END}")
+    print_line()
+    
+    port = input(f"\n {Color.GREEN}Puerto para API General (default: 9100): {Color.END}").strip()
+    if not port:
+        port = "9100"
+    
+    print(f"\n {Color.YELLOW}Iniciando API General...{Color.END}")
+    
+    try:
+        import os
+        api_script = os.path.join(os.path.dirname(__file__), 'api_general.py')
+        
+        if not os.path.exists(api_script):
+            print(f" {Color.RED}✗ Error: api_general.py no encontrado{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+        
+        # Verificar Flask
+        check_flask = subprocess.run(['python3', '-c', 'import flask'], 
+                                    capture_output=True, text=True)
+        
+        if check_flask.returncode != 0:
+            print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
+            subprocess.run(['apt-get', 'install', '-y', 'python3-flask'],
+                         capture_output=True, text=True)
+            print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
+        
+        # Abrir puerto
+        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        
+        # Iniciar servidor
+        import time
+        subprocess.run([
+            'screen', '-dmS', 'moratech_api_general',
+            'python3', api_script, port
+        ])
+        
+        time.sleep(2)
+        
+        # Verificar
+        check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+        if 'moratech_api_general' not in check.stdout:
+            print(f"\n {Color.RED}✗ El servidor no pudo iniciar{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+        
+        # Obtener IP
+        try:
+            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                                     capture_output=True, text=True, timeout=3)
+            server_ip = ip_result.stdout.strip()
+        except:
+            server_ip = "TU_IP"
+        
+        print(f"\n {Color.GREEN}✓ API General iniciado{Color.END}")
+        print(f"\n {Color.CYAN}Configuración:{Color.END}")
+        print(f" {Color.CYAN}Puerto: {Color.GREEN}{port}{Color.END}")
+        print(f" {Color.CYAN}Dashboard: {Color.GREEN}http://{server_ip}:{port}/dashboard-global{Color.END}")
+        print(f" {Color.CYAN}Panel Control: {Color.GREEN}http://{server_ip}:{port}/panel-control{Color.END}")
+        
+        moratech.log_action("admin", f"API General iniciado en puerto {port}")
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 def start_api_server():
     """Iniciar servidor API"""

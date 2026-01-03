@@ -229,7 +229,6 @@ def api_agregar_token():
         log_api_request('/api/token', data, f'Error: {e}')
         return jsonify({'error': str(e)}), 500
 
-
 @app.route('/api/renovar', methods=['POST'])
 @require_auth
 def api_renovar():
@@ -398,6 +397,27 @@ def api_borrar():
         log_api_request('/api/borrar', data, f'Error: {e}')
         return jsonify({'error': str(e)}), 500
 
+#trae las activaciones
+@app.route('/api/sync-activaciones', methods=['GET'])
+@require_auth
+def api_sync_activaciones():
+    """Endpoint para sincronización - Devuelve TODAS las activaciones"""
+    # Leer nombre de VPS desde archivo
+    vps_name_file = CONFIG_DIR / 'vps_name.txt'
+    if vps_name_file.exists():
+        with open(vps_name_file, 'r') as f:
+            vps_name = f.read().strip()
+    else:
+        vps_name = 'VPS Sin Nombre'
+    
+    activaciones = obtener_activaciones(limite=1000)
+    
+    return jsonify({
+        'vps_nombre': vps_name,
+        'total': len(activaciones),
+        'activaciones': activaciones
+    }), 200
+
 # para web
 @app.route('/dashboard')
 def dashboard():
@@ -449,5 +469,27 @@ def api_estadisticas():
 
 
 if __name__ == '__main__':
+    # Configurar nombre de VPS si no existe
+    vps_name_file = CONFIG_DIR / 'vps_name.txt'
+    
+    if not vps_name_file.exists():
+        print("\n" + "="*50)
+        print("CONFIGURACIÓN INICIAL DEL SERVIDOR API")
+        print("="*50)
+        vps_name = input("Nombre de esta VPS (ej: Directo1, Directo2): ").strip()
+        
+        if vps_name:
+            CONFIG_DIR.mkdir(exist_ok=True)
+            with open(vps_name_file, 'w') as f:
+                f.write(vps_name)
+            print(f"✓ Nombre configurado: {vps_name}\n")
+    
+    # Cargar nombre de VPS
+    with open(vps_name_file, 'r') as f:
+        VPS_NAME = f.read().strip()
+    
+    # Configurar puerto
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 9000
+    
+    print(f"Iniciando API Server: {VPS_NAME} en puerto {port}")
     app.run(host='0.0.0.0', port=port, debug=False)

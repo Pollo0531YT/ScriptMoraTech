@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel de Control - MORATECH</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        .btn {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover { opacity: 0.9; }
+        .btn-success {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        }
+        
+        /* Formulario */
+        .form-group {
+            margin-bottom: 20px;
+        }
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 600;
+        }
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        .form-group input:focus, .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        /* Selector de VPS */
+        .vps-selector {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+        .vps-checkbox {
+            display: flex;
+            align-items: center;
+            margin: 10px 0;
+        }
+        .vps-checkbox input {
+            margin-right: 10px;
+            width: auto;
+        }
+        
+        /* Resultados */
+        .results {
+            margin-top: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            display: none;
+        }
+        .result-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+        }
+        .result-success {
+            background: #d1fae5;
+            border-left: 4px solid #10b981;
+        }
+        .result-error {
+            background: #fee2e2;
+            border-left: 4px solid #ef4444;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #ddd;
+        }
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+        }
+        .tab.active {
+            border-bottom-color: #667eea;
+            color: #667eea;
+            font-weight: bold;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>🎮 Panel de Control</h1>
+                <p style="color: #666;">Gestión Centralizada de VPS</p>
+            </div>
+            <a href="/dashboard-global" class="btn">🌐 Dashboard Global</a>
+        </div>
+        
+        <!-- Tabs -->
+        <div class="tabs">
+            <div class="tab active" onclick="showTab('activar')">➕ Activar Token</div>
+            <div class="tab" onclick="showTab('renovar')">🔄 Renovar Token</div>
+        </div>
+        
+        <!-- Tab: Activar Token -->
+        <div id="tab-activar" class="tab-content active">
+            <h2 style="color: #667eea; margin-bottom: 20px;">Activar Token Nuevo</h2>
+            
+            <div class="form-group">
+                <label>Nombre del Cliente</label>
+                <input type="text" id="nombreActivar" placeholder="Ej: Pedro Castro">
+            </div>
+            
+            <div class="form-group">
+                <label>Token de Acceso</label>
+                <input type="text" id="tokenActivar" placeholder="Ej: abc123token456">
+            </div>
+            
+            <div class="form-group">
+                <label>Días de Servicio</label>
+                <input type="number" id="diasActivar" value="30">
+            </div>
+            
+            <div class="form-group">
+                <label>Referencia Bancaria (Opcional)</label>
+                <input type="text" id="referenciaActivar" placeholder="Ej: 0531">
+            </div>
+            
+            <div class="form-group">
+                <label>Origen del Pago</label>
+                <select id="origenActivar">
+                    <option value="deposito">Depósito Bancario</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="web">Pago Web</option>
+                    <option value="manual">Manual</option>
+                </select>
+            </div>
+            
+            <div class="vps-selector">
+                <h3 style="margin-bottom: 15px;">Seleccionar VPS</h3>
+                <label class="vps-checkbox">
+                    <input type="checkbox" id="selectAllActivar" onchange="toggleAllVPS('activar')">
+                    <strong>Seleccionar TODAS</strong>
+                </label>
+                <hr style="margin: 10px 0;">
+                <div id="vpsListActivar"></div>
+            </div>
+            
+            <button class="btn btn-success" style="width: 100%; padding: 15px; font-size: 16px;" onclick="activarToken()">
+                🚀 ACTIVAR EN VPS SELECCIONADAS
+            </button>
+        </div>
+        
+        <!-- Tab: Renovar Token -->
+        <div id="tab-renovar" class="tab-content">
+            <h2 style="color: #667eea; margin-bottom: 20px;">Renovar Token Existente</h2>
+            
+            <div class="form-group">
+                <label>Token a Renovar</label>
+                <input type="text" id="tokenRenovar" placeholder="Ej: abc123token456">
+            </div>
+            
+            <div class="form-group">
+                <label>Días a Sumar</label>
+                <input type="number" id="diasRenovar" value="30">
+            </div>
+            
+            <div class="form-group">
+                <label>Referencia Bancaria (Opcional)</label>
+                <input type="text" id="referenciaRenovar" placeholder="Ej: 0531">
+            </div>
+            
+            <div class="form-group">
+                <label>Origen del Pago</label>
+                <select id="origenRenovar">
+                    <option value="deposito">Depósito Bancario</option>
+                    <option value="whatsapp">WhatsApp</option>
+                    <option value="web">Pago Web</option>
+                    <option value="manual">Manual</option>
+                </select>
+            </div>
+            
+            <div class="vps-selector">
+                <h3 style="margin-bottom: 15px;">Seleccionar VPS</h3>
+                <label class="vps-checkbox">
+                    <input type="checkbox" id="selectAllRenovar" onchange="toggleAllVPS('renovar')">
+                    <strong>Seleccionar TODAS</strong>
+                </label>
+                <hr style="margin: 10px 0;">
+                <div id="vpsListRenovar"></div>
+            </div>
+            
+            <button class="btn btn-success" style="width: 100%; padding: 15px; font-size: 16px;" onclick="renovarToken()">
+                🔄 RENOVAR EN VPS SELECCIONADAS
+            </button>
+        </div>
+        
+        <!-- Resultados -->
+        <div id="results" class="results">
+            <h3 style="margin-bottom: 15px;">Resultados de la Operación</h3>
+            <div id="resultsContent"></div>
+        </div>
+    </div>
+    
+    <script>
+        let vpsList = [];
+        
+        async function loadVPS() {
+            const response = await fetch('/api/vps-list');
+            vpsList = await response.json();
+            
+            const htmlActivar = vpsList.filter(v => v.activo).map(vps => `
+                <label class="vps-checkbox">
+                    <input type="checkbox" class="vps-check-activar" value="${vps.id}">
+                    ${vps.nombre}
+                </label>
+            `).join('');
+            
+            const htmlRenovar = vpsList.filter(v => v.activo).map(vps => `
+                <label class="vps-checkbox">
+                    <input type="checkbox" class="vps-check-renovar" value="${vps.id}">
+                    ${vps.nombre}
+                </label>
+            `).join('');
+            
+            document.getElementById('vpsListActivar').innerHTML = htmlActivar;
+            document.getElementById('vpsListRenovar').innerHTML = htmlRenovar;
+        }
+        
+        function toggleAllVPS(tab) {
+            const checked = document.getElementById(`selectAll${tab.charAt(0).toUpperCase() + tab.slice(1)}`).checked;
+            document.querySelectorAll(`.vps-check-${tab}`).forEach(cb => cb.checked = checked);
+        }
+        
+        function showTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(tc => tc.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(`tab-${tab}`).classList.add('active');
+        }
+        
+        function getSelectedVPS(tab) {
+            return Array.from(document.querySelectorAll(`.vps-check-${tab}:checked`))
+                        .map(cb => parseInt(cb.value));
+        }
+        
+        async function activarToken() {
+            const nombre = document.getElementById('nombreActivar').value;
+            const token = document.getElementById('tokenActivar').value;
+            const dias = parseInt(document.getElementById('diasActivar').value);
+            const referencia = document.getElementById('referenciaActivar').value;
+            const origen = document.getElementById('origenActivar').value;
+            const vps_ids = getSelectedVPS('activar');
+            
+            if (!nombre || !token) {
+                alert('Nombre y Token son requeridos');
+                return;
+            }
+            
+            if (vps_ids.length === 0) {
+                alert('Selecciona al menos una VPS');
+                return;
+            }
+            
+            const response = await fetch('/api/activar-token', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({nombre, token, dias, referencia, origen, vps_ids})
+            });
+            
+            const data = await response.json();
+            mostrarResultados(data);
+        }
+        
+        async function renovarToken() {
+            const token = document.getElementById('tokenRenovar').value;
+            const dias = parseInt(document.getElementById('diasRenovar').value);
+            const referencia = document.getElementById('referenciaRenovar').value;
+            const origen = document.getElementById('origenRenovar').value;
+            const vps_ids = getSelectedVPS('renovar');
+            
+            if (!token) {
+                alert('Token es requerido');
+                return;
+            }
+            
+            if (vps_ids.length === 0) {
+                alert('Selecciona al menos una VPS');
+                return;
+            }
+            
+            const response = await fetch('/api/renovar-token', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({token, dias, referencia, origen, vps_ids})
+            });
+            
+            const data = await response.json();
+            mostrarResultados(data);
+        }
+        
+        function mostrarResultados(data) {
+            const html = data.resultados.map(r => {
+                const className = r.success ? 'result-success' : 'result-error';
+                const icon = r.success ? '✓' : '✗';
+                const msg = r.success ? 'Exitoso' : (r.error || 'Error');
+                
+                return `
+                    <div class="result-item ${className}">
+                        <span><strong>${r.vps_nombre}</strong></span>
+                        <span>${icon} ${msg}</span>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('resultsContent').innerHTML = html;
+            document.getElementById('results').style.display = 'block';
+            
+            // Scroll a resultados
+            document.getElementById('results').scrollIntoView({behavior: 'smooth'});
+        }
+        
+        // Cargar VPS al inicio
+        loadVPS();
+    </script>
+</body>
+</html>

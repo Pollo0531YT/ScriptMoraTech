@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard Global - MORATECH</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+        }
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        .btn {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn:hover { opacity: 0.9; }
+        
+        /* VPS Status Cards */
+        .vps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        .vps-card {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            border-left: 4px solid #667eea;
+        }
+        .vps-card.offline {
+            border-left-color: #ef4444;
+            background: #fee;
+        }
+        .vps-name {
+            font-weight: bold;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+        }
+        .vps-status {
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        /* Tabla */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px;
+            text-align: left;
+            font-weight: 600;
+        }
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid #eee;
+        }
+        tr:hover { background: #f5f5f5; }
+        
+        .badge {
+            padding: 5px 10px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
+        .badge-success { background: #10b981; color: white; }
+        .badge-error { background: #ef4444; color: white; }
+        .badge-whatsapp { background: #25D366; color: white; }
+        .badge-deposito { background: #3b82f6; color: white; }
+        .badge-web { background: #8b5cf6; color: white; }
+        .badge-manual { background: #6b7280; color: white; }
+        
+        /* Modal VPS */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 1000;
+        }
+        .modal-content {
+            background: white;
+            margin: 100px auto;
+            padding: 30px;
+            border-radius: 10px;
+            max-width: 500px;
+        }
+        .modal input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+        }
+        .close {
+            float: right;
+            font-size: 28px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>🌐 Dashboard Global</h1>
+                <p style="color: #666;">Control Centralizado de VPS</p>
+            </div>
+            <div class="nav-buttons">
+                <a href="/panel-control" class="btn">🎮 Panel de Control</a>
+                <button class="btn" onclick="showAddVPS()">➕ Agregar VPS</button>
+                <button class="btn" onclick="syncAll()">🔄 Sincronizar</button>
+            </div>
+        </div>
+        
+        <div id="vps-status" class="vps-grid"></div>
+        
+        <h2 style="margin-top: 30px; color: #667eea;">Activaciones Globales</h2>
+        <div id="tabla"></div>
+    </div>
+    
+    <!-- Modal Agregar VPS -->
+    <div id="modalVPS" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2>Agregar VPS</h2>
+            <input type="text" id="vpsNombre" placeholder="Nombre (ej: Directo1)">
+            <input type="text" id="vpsURL" placeholder="URL (ej: http://directo1.moratech.work:9000)">
+            <button class="btn" onclick="addVPS()">Agregar</button>
+        </div>
+    </div>
+    
+    <script>
+        let activaciones = [];
+        let vpsList = [];
+        
+        async function loadVPS() {
+            const response = await fetch('/api/vps-list');
+            vpsList = await response.json();
+            
+            const html = vpsList.map(vps => `
+                <div class="vps-card ${vps.activo ? '' : 'offline'}">
+                    <div class="vps-name">${vps.nombre}</div>
+                    <div class="vps-status">
+                        ${vps.activo ? '🟢 Activo' : '🔴 Inactivo'}
+                    </div>
+                    <button class="btn" style="margin-top: 10px; font-size: 12px;" 
+                            onclick="toggleVPS(${vps.id})">
+                        ${vps.activo ? 'Desactivar' : 'Activar'}
+                    </button>
+                    <button class="btn" style="margin-top: 5px; font-size: 12px; background: #ef4444;" 
+                            onclick="removeVPS(${vps.id})">
+                        Eliminar
+                    </button>
+                </div>
+            `).join('');
+            
+            document.getElementById('vps-status').innerHTML = html;
+        }
+        
+        async function syncAll() {
+            const response = await fetch('/api/sync-all');
+            activaciones = await response.json();
+            mostrarTabla();
+        }
+        
+        function mostrarTabla() {
+            if (activaciones.length === 0) {
+                document.getElementById('tabla').innerHTML = '<p style="text-align:center; color:#999; padding:40px;">No hay activaciones</p>';
+                return;
+            }
+            
+            let html = '<table><thead><tr>';
+            html += '<th>ID</th><th>VPS</th><th>Estado</th><th>Fecha/Hora</th>';
+            html += '<th>Origen</th><th>Nombre</th><th>Token</th><th>Días</th><th>Referencia</th>';
+            html += '</tr></thead><tbody>';
+            
+            activaciones.forEach(a => {
+                if (a.error) {
+                    html += `<tr style="background: #fee;">
+                        <td>-</td>
+                        <td>${a.vps_nombre}</td>
+                        <td><span class="badge badge-error">ERROR</span></td>
+                        <td>${a.timestamp}</td>
+                        <td colspan="5">${a.error}</td>
+                    </tr>`;
+                } else {
+                    const origenBadge = `badge-${a.origen}`;
+                    const estadoBadge = a.success ? 'badge-success' : 'badge-error';
+                    const estadoText = a.success ? '✓' : '✗';
+                    
+                    html += `<tr>
+                        <td>${a.id}</td>
+                        <td><strong>${a.vps_nombre}</strong></td>
+                        <td><span class="badge ${estadoBadge}">${estadoText}</span></td>
+                        <td>${a.timestamp}</td>
+                        <td><span class="badge ${origenBadge}">${a.origen}</span></td>
+                        <td>${a.nombre}</td>
+                        <td><code>${a.usuario}</code></td>
+                        <td>${a.dias}</td>
+                        <td>${a.referencia || '-'}</td>
+                    </tr>`;
+                }
+            });
+            
+            html += '</tbody></table>';
+            document.getElementById('tabla').innerHTML = html;
+        }
+        
+        function showAddVPS() {
+            document.getElementById('modalVPS').style.display = 'block';
+        }
+        
+        function closeModal() {
+            document.getElementById('modalVPS').style.display = 'none';
+        }
+        
+        async function addVPS() {
+            const nombre = document.getElementById('vpsNombre').value;
+            const url = document.getElementById('vpsURL').value;
+            
+            await fetch('/api/vps-add', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({nombre, url})
+            });
+            
+            closeModal();
+            loadVPS();
+        }
+        
+        async function removeVPS(id) {
+            if (!confirm('¿Eliminar esta VPS?')) return;
+            
+            await fetch(`/api/vps-remove/${id}`, {method: 'DELETE'});
+            loadVPS();
+        }
+        
+        async function toggleVPS(id) {
+            await fetch(`/api/vps-toggle/${id}`, {method: 'POST'});
+            loadVPS();
+        }
+        
+        // Cargar inicial
+        loadVPS();
+        syncAll();
+        
+        // Auto-sync cada 60 segundos
+        setInterval(syncAll, 60000);
+    </script>
+</body>
+</html>
