@@ -336,7 +336,7 @@ def api_sync_all():
         
         try:
             response = requests.get(
-                f"{vps['url']}/api/sync-activaciones",
+                f"{vps['url_api']}/api/sync-activaciones",
                 headers={'X-Auth-Key': SECRET_KEY},
                 timeout=5
             )
