@@ -389,24 +389,31 @@ def menu_borrar_usuarios():
             break
 
 def ejecutar_borrado_fisico(username):
-    """Función maestra para purgar un usuario de Linux y JSON"""
+    """Función maestra para purgar un usuario de Linux y JSON con esteroides"""
     users = load_users()
     if username not in users:
         return False, "Usuario no encontrado"
 
-    # 1. Matar procesos
-    subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    try:
+
+        # 1. Matar procesos
+        subprocess.run(['sudo', 'pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    # 2. Eliminar de Linux
-    subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # 2. Eliminar de Linux
+        subprocess.run(['sudo', 'userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
-    # 3. Quitar del JSON
-    del users[username]
+        # 3. Quitar del JSON    
+        if username in users:
+            del users[username]
     
-    # 4. Guardar
-    if save_users({}, full_database=users):
-        return True, "Usuario purgado correctamente"
-    return False, "Error al guardar base de datos"
+        # 4. Guardar
+        if save_users({}, full_database=users):
+            return True, "Usuario purgado correctamente"
+        else:
+            return False, "Error al guardar base de datos"
+        
+    except Exception as e:
+        return False, f"Error crítico en el proceso: {str(e)}"
 
 # Tu función de menú ahora queda cortita:
 def borrar_usuario_especifico():

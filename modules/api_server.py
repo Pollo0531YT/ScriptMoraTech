@@ -301,6 +301,9 @@ def api_borrar():
     """Eliminar usuario y registrar quién realizó la purga"""
     try:
         data = request.get_json()
+        if not data:
+            return jsonify({'error': 'No se enviaron datos'}), 400
+        
         username = data.get('user')
         origen = data.get('origen', 'api')
         
@@ -313,21 +316,21 @@ def api_borrar():
         if success:
             # ✅ REGISTRO DE BORRADO
             registrar_activacion('borrar', username, username, 0, 'SISTEMA', origen, True)
-            
-            result = {
+            log_api_request('/api/borrar', data, f'OK - {message}')
+            return jsonify({
                 'success': True,
                 'user': username,
-                'action': 'deleted'
-            }
-            log_api_request('/api/borrar', data, f'OK - {message}')
-            return jsonify(result), 200
+                'message': message
+            }), 200
         else:
+            # ❌ REGISTRO DE FALLO REAL
             registrar_activacion('borrar', username, username, 0, 'FALLO', origen, False, message)
+            log_api_request('/api/borrar', data, f'ERROR - {message}')
             return jsonify({'error': message}), 404
            
     except Exception as e:
-        log_api_request('/api/borrar', data, f'Error: {e}')
-        return jsonify({'error': str(e)}), 500
+        log_api_request('/api/borrar', data, f'CRITICAL ERROR: {e}')
+        return jsonify({'error': f"Error interno: {str(e)}"}), 500
     
 #trae las activaciones
 @app.route('/api/sync-activaciones', methods=['GET'])
