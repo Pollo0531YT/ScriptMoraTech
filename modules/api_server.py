@@ -419,7 +419,7 @@ def api_sync_activaciones():
         except:
             vps_name = 'vps-desconocida'
     
-    activaciones = obtener_activaciones(limite=1000)
+    activaciones = obtener_activaciones(limite=300)
     
     return jsonify({
         'vps_nombre': vps_name,
