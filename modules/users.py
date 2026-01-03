@@ -397,10 +397,10 @@ def ejecutar_borrado_fisico(username):
     try:
 
         # 1. Matar procesos
-        subprocess.run(['sudo', 'pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
         # 2. Eliminar de Linux
-        subprocess.run(['sudo', 'userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
         # 3. Quitar del JSON    
         if username in users:
