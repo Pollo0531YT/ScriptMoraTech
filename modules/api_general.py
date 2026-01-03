@@ -4,11 +4,7 @@ API GENERAL - Sistema centralizado para gestionar múltiples VPS
 VPS BOT - Dashboard Global y Panel de Control
 """
 
-import ssl
-# PARCHE PARA ERROR PROTOCOL_TLSv1
-if not hasattr(ssl, 'PROTOCOL_TLSv1'):
-    ssl.PROTOCOL_TLSv1 = ssl.PROTOCOL_TLS
-    
+
 import json
 import sys
 import os
