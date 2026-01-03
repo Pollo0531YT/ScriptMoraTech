@@ -16,6 +16,9 @@ import json
 import time
 from pathlib import Path
 
+# IMPORTS DEL PROYECTO (colores, helpers)
+from modules.common import Color, print_line, print_banner, clear_screen
+
 SLOW_DIR = "/etc/slowdns"
 SERVER_BIN = f"{SLOW_DIR}/sldns-server"
 CLIENT_BIN = f"{SLOW_DIR}/sldns-client"
@@ -79,10 +82,10 @@ def download_any(urls, dest):
         # prefer curl
         if shutil.which("curl"):
             r = run(["curl", "-fsSL", "-o", tmp, url], capture=True)
-            ok = (r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0)
+            ok = (getattr(r, "returncode", 1) == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0)
         else:
             r = run(["wget", "-q", "-O", tmp, url], capture=True)
-            ok = (r.returncode == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0)
+            ok = (getattr(r, "returncode", 1) == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0)
         if ok:
             shutil.move(tmp, dest)
             os.chmod(dest, 0o755)
@@ -174,7 +177,7 @@ def enable_and_start_services():
     # check status (short)
     s1 = run(["systemctl", "is-active", "server-sldns"], capture=True)
     s2 = run(["systemctl", "is-active", "client-sldns"], capture=True)
-    return (s1.stdout.strip() == "active", s2.stdout.strip() == "active")
+    return (getattr(s1, "stdout", "").strip() == "active", getattr(s2, "stdout", "").strip() == "active")
 
 
 def install_flow():
@@ -274,4 +277,89 @@ def uninstall_flow():
             pass
     run(["systemctl", "daemon-reload"], capture=True)
     print(" Uninstall completo (archivos eliminados).")
+
+
+# -------------------------
+# MENU (limpio, con colores)
+# -------------------------
+def menu_slowdns():
+    """Menú SLOWDNS (limpio, con colores)."""
+    while True:
+        try:
+            clear_screen()
+            # header sencillo
+            print(f"{Color.CYAN}+------------------ SLOWDNS (MoraTech) ------------------+{Color.END}")
+            # estado service / pgrep
+            try:
+                s = run(["systemctl", "is-active", "server-sldns"], capture=True)
+                s_active = getattr(s, "stdout", "").strip() == "active"
+            except Exception:
+                p = run(["pgrep", "-f", "sldns-server"], capture=True)
+                s_active = bool(getattr(p, "stdout", "").strip())
+            status_txt = f"{Color.GREEN}ACTIVO{Color.END}" if s_active else f"{Color.RED}INACTIVO{Color.END}"
+            print(f" {Color.YELLOW}Estado:{Color.END} {status_txt}")
+            print_line()
+
+            # opciones
+            print(f" {Color.GREEN}1.{Color.END} Instalar / Iniciar")
+            print(f" {Color.GREEN}2.{Color.END} Detener")
+            print(f" {Color.GREEN}3.{Color.END} Info")
+            print(f" {Color.GREEN}4.{Color.END} Ver logs")
+            print(f" {Color.GREEN}5.{Color.END} Desinstalar (elimina binarios & units)")
+            print(f" {Color.GREEN}0.{Color.END} Volver")
+            print_line()
+
+            choice = input(f"\n{Color.CYAN}► Selecciona: {Color.END}").strip()
+
+            if choice == "1":
+                install_flow()
+            elif choice == "2":
+                stop_flow()
+                input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+            elif choice == "3":
+                conf = {"ns": "No configurado", "port": "?"}
+                if os.path.exists(CONFIG_FILE):
+                    try:
+                        with open(CONFIG_FILE, "r") as f:
+                            conf = json.load(f)
+                    except:
+                        pass
+                print_line()
+                print(f" {Color.CYAN}NS:{Color.END} {Color.GREEN}{conf.get('ns')}{Color.END}")
+                print(f" {Color.CYAN}Puerto SSH local:{Color.END} {Color.GREEN}{conf.get('port')}{Color.END}")
+                print(f" {Color.CYAN}Key (preview):{Color.END} {Color.YELLOW}{MASTER_PRIV[:20]}...{Color.END}")
+                input(f"\n{Color.CYAN}Presiona Enter para volver...{Color.END}")
+            elif choice == "4":
+                # logs: prefer journalctl
+                if os.path.exists("/etc/systemd/system/server-sldns.service"):
+                    print(f"\n {Color.YELLOW}Abriendo journalctl -u server-sldns (Ctrl+C para salir){Color.END}\n")
+                    try:
+                        run(["bash", "-c", "journalctl -u server-sldns -n 200 --no-pager -f"])
+                    except KeyboardInterrupt:
+                        pass
+                elif os.path.exists(LOG_FILE):
+                    print(f"\n {Color.YELLOW}Abriendo tail -f {LOG_FILE} (Ctrl+C para salir){Color.END}\n")
+                    try:
+                        run(["bash", "-c", f"tail -n 200 -f {LOG_FILE}"])
+                    except KeyboardInterrupt:
+                        pass
+                else:
+                    print(f"\n {Color.RED}No hay logs disponibles.{Color.END}")
+                    input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+            elif choice == "5":
+                confirm = input(f"{Color.YELLOW}¿Eliminar todo (binarios, keys, units)? (s/N): {Color.END}").strip().lower()
+                if confirm == "s":
+                    uninstall_flow()
+                    input(f"\n{Color.CYAN}Hecho. Presiona Enter...{Color.END}")
+                else:
+                    print(f"{Color.YELLOW}Cancelado.{Color.END}")
+                    time.sleep(0.6)
+            elif choice == "0":
+                break
+            else:
+                print(f"\n{Color.RED}Opción inválida{Color.END}")
+                time.sleep(0.5)
+
+        except KeyboardInterrupt:
+            break
 
