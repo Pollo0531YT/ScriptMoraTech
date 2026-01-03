@@ -62,7 +62,7 @@ def control_usuarios_menu():
         elif choice == '11':
             menu_api_server()
         elif choice == '12':
-            start_api_general_server()
+            menu_api_general()
         elif choice == '14':
             reset_token_password()
         elif choice == '0':
@@ -1431,79 +1431,6 @@ def menu_api_server():
     else:
         menu_api_server()
 
-def start_api_general_server():
-    """Iniciar servidor API General (VPS Central)"""
-    clear_screen()
-    print_banner()
-    print_line()
-    print(f" {Color.CYAN}INICIAR API GENERAL (Dashboard Central){Color.END}")
-    print_line()
-    
-    port = input(f"\n {Color.GREEN}Puerto para API General (default: 9100): {Color.END}").strip()
-    if not port:
-        port = "9100"
-    
-    print(f"\n {Color.YELLOW}Iniciando API General...{Color.END}")
-    
-    try:
-        import os
-        api_script = os.path.join(os.path.dirname(__file__), 'api_general.py')
-        
-        if not os.path.exists(api_script):
-            print(f" {Color.RED}✗ Error: api_general.py no encontrado{Color.END}")
-            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-            return
-        
-        # Verificar Flask
-        check_flask = subprocess.run(['python3', '-c', 'import flask'], 
-                                    capture_output=True, text=True)
-        
-        if check_flask.returncode != 0:
-            print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
-            subprocess.run(['apt-get', 'install', '-y', 'python3-flask'],
-                         capture_output=True, text=True)
-            print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
-        
-        # Abrir puerto
-        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
-        
-        # Iniciar servidor
-        import time
-        subprocess.run([
-            'screen', '-dmS', 'moratech_api_general',
-            'python3', api_script, port
-        ])
-        
-        time.sleep(2)
-        
-        # Verificar
-        check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
-        if 'moratech_api_general' not in check.stdout:
-            print(f"\n {Color.RED}✗ El servidor no pudo iniciar{Color.END}")
-            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-            return
-        
-        # Obtener IP
-        try:
-            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
-                                     capture_output=True, text=True, timeout=3)
-            server_ip = ip_result.stdout.strip()
-        except:
-            server_ip = "TU_IP"
-        
-        print(f"\n {Color.GREEN}✓ API General iniciado{Color.END}")
-        print(f"\n {Color.CYAN}Configuración:{Color.END}")
-        print(f" {Color.CYAN}Puerto: {Color.GREEN}{port}{Color.END}")
-        print(f" {Color.CYAN}Dashboard: {Color.GREEN}http://{server_ip}:{port}/dashboard-global{Color.END}")
-        print(f" {Color.CYAN}Panel Control: {Color.GREEN}http://{server_ip}:{port}/panel-control{Color.END}")
-        
-        moratech.log_action("admin", f"API General iniciado en puerto {port}")
-        
-    except Exception as e:
-        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
-    
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
 def start_api_server():
     """Iniciar servidor API"""
     clear_screen()
@@ -1651,3 +1578,196 @@ def view_api_logs():
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
         input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+#api general
+def menu_api_general():
+    """Menú del servidor API General (Dashboard Global)"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}SERVIDOR API GENERAL (Dashboard Global){Color.END}")
+    print_line()
+    
+    # Verificar si hay servidor corriendo
+    check_server = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+    is_running = 'moratech_api_general' in check_server.stdout
+    
+    if is_running:
+        # Obtener puerto actual
+        try:
+            port_file = CONFIG_DIR / 'api_general_port.txt'
+            if port_file.exists():
+                with open(port_file, 'r') as f:
+                    port = f.read().strip()
+            else:
+                port = "9100"
+        except:
+            port = "9100"
+        
+        print(f"\n {Color.GREEN}✓ API General activo en puerto {port}{Color.END}")
+        print(f" {Color.CYAN}Clave: {Color.GREEN}moratech-key{Color.END}")
+        
+        # Obtener IP
+        try:
+            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                                     capture_output=True, text=True, timeout=3)
+            server_ip = ip_result.stdout.strip()
+            print(f" {Color.CYAN}Dashboard: {Color.GREEN}http://{server_ip}:{port}/dashboard-global{Color.END}")
+            print(f" {Color.CYAN}Panel Control: {Color.GREEN}http://{server_ip}:{port}/panel-control{Color.END}")
+        except:
+            pass
+        
+        print_line()
+        print(f" {Color.GREEN}[1]{Color.END} ➮ Ver logs")
+        print(f" {Color.GREEN}[2]{Color.END} ➮ Detener servidor")
+    else:
+        print(f"\n {Color.YELLOW}Servidor detenido{Color.END}")
+        print_line()
+        print(f" {Color.GREEN}[1]{Color.END} ➮ Iniciar API General")
+    
+    print_line()
+    print(f" {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}Volver{Color.END}")
+    print_line()
+    
+    choice = input(f" {Color.CYAN}►{Color.END} Opción: ").strip()
+    
+    if choice == '1':
+        if is_running:
+            view_api_general_logs()
+        else:
+            start_api_general_server()
+    elif choice == '2' and is_running:
+        stop_api_general_server()
+    elif choice == '0':
+        return
+    else:
+        menu_api_general()
+
+def start_api_general_server():
+    """Iniciar servidor API General (VPS Central)"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}INICIAR API GENERAL (Dashboard Central){Color.END}")
+    print_line()
+    
+    port = input(f"\n {Color.GREEN}Puerto para API General (default: 9100): {Color.END}").strip()
+    if not port:
+        port = "9100"
+    
+    print(f"\n {Color.YELLOW}Iniciando API General...{Color.END}")
+    
+    try:
+        import os
+        api_script = os.path.join(os.path.dirname(__file__), 'api_general.py')
+        
+        if not os.path.exists(api_script):
+            print(f" {Color.RED}✗ Error: api_general.py no encontrado{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+        
+        # Verificar Flask
+        check_flask = subprocess.run(['python3', '-c', 'import flask'], 
+                                    capture_output=True, text=True)
+        
+        if check_flask.returncode != 0:
+            print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
+            subprocess.run(['apt-get', 'install', '-y', 'python3-flask'],
+                         capture_output=True, text=True)
+            print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
+        
+        # Abrir puerto
+        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        
+        # Iniciar servidor
+        import time
+        subprocess.run([
+            'screen', '-dmS', 'moratech_api_general',
+            'python3', api_script, port
+        ])
+        
+        time.sleep(2)
+        
+        # Verificar
+        check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+        if 'moratech_api_general' not in check.stdout:
+            print(f"\n {Color.RED}✗ El servidor no pudo iniciar{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+        
+        # Guardar puerto  ← NUEVO
+        port_file = CONFIG_DIR / 'api_general_port.txt'
+        with open(port_file, 'w') as f:
+            f.write(port)
+        
+        # Obtener IP
+        try:
+            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                                     capture_output=True, text=True, timeout=3)
+            server_ip = ip_result.stdout.strip()
+        except:
+            server_ip = "TU_IP"
+        
+        print(f"\n {Color.GREEN}✓ API General iniciado{Color.END}")
+        print(f"\n {Color.CYAN}Configuración:{Color.END}")
+        print(f" {Color.CYAN}Puerto: {Color.GREEN}{port}{Color.END}")
+        print(f" {Color.CYAN}Dashboard: {Color.GREEN}http://{server_ip}:{port}/dashboard-global{Color.END}")
+        print(f" {Color.CYAN}Panel Control: {Color.GREEN}http://{server_ip}:{port}/panel-control{Color.END}")
+        
+        moratech.log_action("admin", f"API General iniciado en puerto {port}")
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    menu_api_general()  # ← CAMBIADO para volver al menú correcto
+    
+def stop_api_general_server():
+    """Detener servidor API General"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}DETENER API GENERAL{Color.END}")
+    print_line()
+    
+    confirm = input(f"\n {Color.YELLOW}¿Detener API General? (s/n): {Color.END}").strip().lower()
+    
+    if confirm == 's':
+        try:
+            subprocess.run(['screen', '-S', 'moratech_api_general', '-X', 'quit'], 
+                         stderr=subprocess.DEVNULL)
+            print(f"\n {Color.GREEN}✓ API General detenido{Color.END}")
+            moratech.log_action("admin", "API General detenido")
+        except Exception as e:
+            print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    else:
+        print(f"\n {Color.YELLOW}Operación cancelada{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    menu_api_general()
+
+def view_api_general_logs():
+    """Ver logs del API General"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}LOGS DEL API GENERAL (Ctrl+C para salir){Color.END}")
+    print_line()
+    
+    log_file = CONFIG_DIR / 'api_general.log'
+    
+    if not log_file.exists():
+        print(f"\n {Color.YELLOW}No hay logs todavía{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        menu_api_general()
+        return
+    
+    try:
+        subprocess.run(['tail', '-f', str(log_file)])
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    
+    menu_api_general()
