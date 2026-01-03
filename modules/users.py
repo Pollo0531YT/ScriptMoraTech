@@ -90,56 +90,45 @@ def agregar_usuario():
         add_token_user()
 
 def add_ssh_user():
-    """Agregar usuario SSH con vencimiento a las 6pm"""
-    users = load_users()
+    """Agregar usuario SSH llamando a la lógica maestra"""
+    clear_screen()
+    print_banner()
     print(f"\n{Color.CYAN}--- NUEVO USUARIO SSH ---{Color.END}\n")
     
     username = input(f"{Color.GREEN}Nombre de usuario: {Color.END}").strip()
-    if not username or username in users:
-        print(f"{Color.RED}✗ El usuario ya existe o es inválido{Color.END}")
-        input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-        return
-    
     password = input(f"{Color.GREEN}Contraseña: {Color.END}").strip()
     days_input = input(f"{Color.GREEN}Días de duración (0 = hoy 6pm): {Color.END}").strip()
-    
-    try:
-        days = int(days_input)
-        expire_date = (datetime.now().date() + timedelta(days=days))
-        expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
-    except:
-        expires = None 
-    
     max_conn = input(f"{Color.GREEN}Máximas conexiones: {Color.END}").strip()
-    max_conn = int(max_conn) if max_conn.isdigit() else 1
     
-    new_user_data = {
-        "password": password,
-        "role": "user", "type": "ssh",
-        "created": datetime.now().isoformat(),
-        "expires": expires,
-        "max_connections": max_conn,
-        "enabled": True
-    }
+    # Validaciones rápidas de entrada
+    days = int(days_input) if days_input.isdigit() else 0
+    limit = int(max_conn) if max_conn.isdigit() else 1
     
-    users[username] = new_user_data
     print(f"\n{Color.YELLOW}⏳ Creando acceso en el sistema...{Color.END}", end="\r", flush=True)
+    
+    # LLAMADA A LA FUNCIÓN MAESTRA
+    success, msg, expires = ejecutar_creacion_usuario(
+        username, password, days, user_type="ssh", max_conn=limit
+    )
 
-    if save_users({username: new_user_data}, full_database=users):
+    if success:
         print(f"{' ' * 40}\r{Color.GREEN}✓ Usuario SSH creado exitosamente{Color.END}")
-        moratech.log_action("admin", f"Usuario SSH creado: {username}")
+        # Asegúrate de que 'moratech' esté importado para el log
+        try: moratech.log_action("admin", f"Usuario SSH creado: {username}")
+        except: pass
     else:
-        print(f"\n{Color.RED}✗ Error creando usuario en el sistema{Color.END}")
+        print(f"{' ' * 40}\r{Color.RED}✗ {msg}{Color.END}")
     
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-
-def add_token_user():
-    """Agregar usuario Token con vencimiento a las 6pm"""
-    token_config = load_token_config()
-    users = load_users()
     
+def add_token_user():
+    """Agregar usuario Token llamando a la lógica maestra"""
+    token_config = load_token_config()
+    clear_screen()
+    print_banner()
     print(f"\n{Color.CYAN}--- NUEVO USUARIO TOKEN ---{Color.END}\n")
     
+    # Verificar contraseña maestra
     if not token_config.get('token_password'):
         token_pass = input(f"{Color.GREEN}Contraseña maestra para tokens: {Color.END}").strip()
         token_config['token_password'] = token_pass
@@ -147,41 +136,66 @@ def add_token_user():
     
     display_name = input(f"{Color.GREEN}Nombre del usuario (ej: Pedro): {Color.END}").strip()
     token_input = input(f"{Color.GREEN}Token de acceso: {Color.END}").strip()
-    
-    if not token_input or token_input in users:
-        print(f"{Color.RED}✗ Token inválido o ya existente{Color.END}")
-        input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-        return
-    
     days_input = input(f"{Color.GREEN}Días de duración (0 = hoy 6pm): {Color.END}").strip()
-    try:
-        days = int(days_input)
-        expire_date = (datetime.now().date() + timedelta(days=days))
-        expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
-    except:
-        print(f"{Color.RED}✗ Valor de días inválido{Color.END}")
-        return
+    
+    days = int(days_input) if days_input.isdigit() else 0
+    
+    print(f"\n{Color.YELLOW}⏳ Generando token en el sistema...{Color.END}", end="\r", flush=True)
 
-    new_token_data = {
-        "password": token_config['token_password'],
-        "role": "user", "type": "token",
-        "display_name": display_name,
+    # LLAMADA A LA FUNCIÓN MAESTRA
+    success, msg, expires = ejecutar_creacion_usuario(
+        token_input, 
+        token_config['token_password'], 
+        days, 
+        user_type="token", 
+        max_conn=1, 
+        display_name=display_name
+    )
+
+    if success:
+        print(f"{' ' * 40}\r{Color.GREEN}✓ Usuario token creado correctamente{Color.END}")
+        try: moratech.log_action("admin", f"Usuario token creado: {display_name} ({token_input})")
+        except: pass
+    else:
+        print(f"{' ' * 40}\r{Color.RED}✗ {msg}{Color.END}")
+        
+    input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+
+#funcion real de creacion del usuario
+def ejecutar_creacion_usuario(username, password, days, user_type="ssh", max_conn=1, display_name=None):
+    """Función Central: Crea en Linux y en JSON (Blindada)"""
+    users = load_users()
+    
+    if not username or username in users:
+        return False, "Usuario inválido o ya existente", None
+
+    # Lógica de fecha (6:00 PM)
+    try:
+        expire_date = (datetime.now().date() + timedelta(days=int(days)))
+        expires_dt = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
+        expires_iso = expires_dt.isoformat()
+    except:
+        expires_iso = None
+
+    # Estructura del usuario
+    new_user_data = {
+        "password": password,
+        "role": "user",
+        "type": user_type,
         "created": datetime.now().isoformat(),
-        "expires": expires,
-        "max_connections": 1,
+        "expires": expires_iso,
+        "max_connections": int(max_conn),
         "enabled": True
     }
     
-    users[token_input] = new_token_data
-    print(f"\n{Color.YELLOW}⏳ Generando token en el sistema...{Color.END}", end="\r", flush=True)
+    if user_type == "token" and display_name:
+        new_user_data["display_name"] = display_name
 
-    if save_users({token_input: new_token_data}, full_database=users):
-        print(f"{' ' * 40}\r{Color.GREEN}✓ Usuario token creado correctamente{Color.END}")
-        moratech.log_action("admin", f"Usuario token creado: {display_name} ({token_input})")
-    else:
-        print(f"\n{Color.RED}✗ Error al registrar el token{Color.END}")
-        
-    input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+    # Guardado: Esto debe activar tu script de Linux automáticamente mediante save_users
+    if save_users({username: new_user_data}, full_database=users):
+        return True, "Creado correctamente", expires_iso
+    
+    return False, "Error al guardar en base de datos", None
 
 def editar_usuario():
     """Editar o renovar usuario - Optimización Instantánea"""
@@ -238,45 +252,28 @@ def editar_usuario():
     choice = input(f"\n {Color.CYAN}►{Color.END} Opción: ").strip()
     
     if choice == '1':
-        days_to_add_input = input(f" {Color.GREEN}Días a sumar: {Color.END}").strip()
-        try:
-            days_to_add = int(days_to_add_input)
-            now = datetime.now()
-            current_expire = datetime.fromisoformat(user_data['expires']) if user_data.get('expires') else now
-            base_date = now.date() if now > current_expire else current_expire.date()
-            
-            new_expire = datetime.combine(base_date + timedelta(days=days_to_add), datetime.min.time()).replace(hour=18, minute=0)
-            users[username_input]['expires'] = new_expire.isoformat()
-            users[username_input]['enabled'] = True
-
-            print(f" {Color.YELLOW}⏳ Sincronizando...{Color.END}", end="\r")
-            
-            # MEJORA: Solo enviamos el usuario modificado
-            if save_users({username_input: users[username_input]}, full_database=users):
-                print(f"{' ' * 40}\r {Color.GREEN}✓ Días sumados exitosamente.{Color.END}")
-                print(f" {Color.CYAN}Nueva fecha: {new_expire.strftime('%d/%m/%Y %H:%M')}{Color.END}")
+        days_input = input(f" {Color.GREEN}Días a sumar: {Color.END}").strip()
+        if days_input.isdigit():
+            success, msg, new_date = ejecutar_renovacion_dias(username_input, int(days_input))
+            if success:
+                print(f"{' ' * 40}\r {Color.GREEN}✓ {msg}.{Color.END}")
+                print(f" {Color.CYAN}Nueva fecha: {new_date.strftime('%d/%m/%Y %H:%M')}{Color.END}")
             else:
-                print(f"\n {Color.RED}✗ Error en el sistema.{Color.END}")
-        except: print(f" {Color.RED}✗ Valor inválido.{Color.END}")
+                print(f"\n {Color.RED}✗ {msg}{Color.END}")
+        else: print(f" {Color.RED}✗ Valor inválido.{Color.END}")
 
     elif choice == '2':
         new_days_input = input(f" {Color.GREEN}Nuevos días (0 = hoy 6pm): {Color.END}").strip()
-        try:
-            new_days = int(new_days_input)
-            expire_date = (datetime.now().date() + timedelta(days=new_days))
-            new_expire = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0)
-            
-            users[username_input]['expires'] = new_expire.isoformat()
-            users[username_input]['enabled'] = True
-
-            print(f" {Color.YELLOW}⏳ Reiniciando vigencia...{Color.END}", end="\r")
-            
-            # MEJORA: Sincronización selectiva
-            if save_users({username_input: users[username_input]}, full_database=users):
-                print(f"{' ' * 40}\r {Color.GREEN}✓ Días reiniciados.{Color.END}")
+        if new_days_input.isdigit():
+            success, msg, new_date = ejecutar_reinicio_dias(username_input, int(new_days_input))
+            if success:
+                print(f"{' ' * 40}\r {Color.GREEN}✓ {msg}.{Color.END}")
+                if new_date:
+                    print(f" {Color.CYAN}Nueva fecha: {new_date.strftime('%d/%m/%Y %H:%M')}{Color.END}")
             else:
-                print(f"\n {Color.RED}✗ Error al aplicar cambios.{Color.END}")
-        except: print(f" {Color.RED}✗ Valor inválido.{Color.END}")
+                print(f"\n {Color.RED}✗ {msg}{Color.END}")
+        else:
+            print(f" {Color.RED}✗ Valor inválido.{Color.END}")
 
     elif choice == '3':
         if user_data.get('type') == 'token':
@@ -294,6 +291,75 @@ def editar_usuario():
    
     input(f"\n {Color.CYAN}Presiona Enter para continuar...{Color.END}")
 
+#funcion de suma fisica de dias
+def ejecutar_renovacion_dias(username, days, referencia='', origen='manual'):
+    """Lógica unificada para SUMAR días (Opción 1 del menú y API)"""
+    users = load_users()
+    if username not in users:
+        return False, "Usuario no encontrado", None
+
+    try:
+        user_data = users[username]
+        now = datetime.now()
+        
+        # --- TU LÓGICA DE RENOVACIÓN ---
+        if user_data.get('expires'):
+            current_expire = datetime.fromisoformat(user_data['expires'])
+            # Si ya venció, empezamos a contar desde hoy a las 6pm
+            if now > current_expire:
+                base_date = now.date() + timedelta(days=days)
+                new_expire = datetime.combine(base_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
+            else:
+                # Si aún está vigente, sumamos los días a la fecha que ya tiene
+                new_expire = current_expire + timedelta(days=days)
+        else:
+            # Si no tenía fecha (era ilimitado o nuevo), desde hoy a las 6pm
+            base_date = now.date() + timedelta(days=days)
+            new_expire = datetime.combine(base_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
+        
+        users[username]['expires'] = new_expire.isoformat()
+        users[username]['enabled'] = True
+        
+        if save_users({username: users[username]}, full_database=users):
+            # Llamamos a tu función de registro (asegúrate que esté importada en users.py)
+            # registrar_activacion('renovar', username, user_data.get('display_name', username), days, referencia, origen, True)
+            return True, "Renovación exitosa", new_expire
+        
+        return False, "Error al guardar cambios", None
+        
+    except Exception as e:
+        return False, f"Error: {str(e)}", None
+    
+#funcion de reinicio de dias FISICO
+def ejecutar_reinicio_dias(username, days):
+    """Lógica unificada para establecer nueva fecha de expiración"""
+    users = load_users()
+    if username not in users:
+        return False, "Usuario no encontrado", None
+
+    try:
+        if days >= 0:
+            expire_date = (datetime.now().date() + timedelta(days=days))
+            # Seteamos siempre a las 18:00 como en tu código original
+            new_expire = datetime.combine(expire_date, datetime.min.time()).replace(
+                hour=18, minute=0, second=0
+            )
+            users[username]['expires'] = new_expire.isoformat()
+        else:
+            # Si mandas días negativos, lo dejamos ilimitado
+            users[username]['expires'] = None
+            new_expire = None
+
+        users[username]['enabled'] = True
+        
+        # Guardado selectivo
+        if save_users({username: users[username]}, full_database=users):
+            return True, "Vigencia actualizada", new_expire
+        return False, "Error al guardar en base de datos", None
+        
+    except Exception as e:
+        return False, f"Error de cálculo: {str(e)}", None
+    
 def menu_borrar_usuarios():
     """Menú para eliminar usuarios"""
     while True:
@@ -322,36 +388,36 @@ def menu_borrar_usuarios():
         elif choice == '0':
             break
 
-def borrar_usuario_especifico():
-    """Eliminar usuario específico - Eliminación Real de Linux"""
+def ejecutar_borrado_fisico(username):
+    """Función maestra para purgar un usuario de Linux y JSON"""
     users = load_users()
+    if username not in users:
+        return False, "Usuario no encontrado"
+
+    # 1. Matar procesos
+    subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    # 2. Eliminar de Linux
+    subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    # 3. Quitar del JSON
+    del users[username]
+    
+    # 4. Guardar
+    if save_users({}, full_database=users):
+        return True, "Usuario purgado correctamente"
+    return False, "Error al guardar base de datos"
+
+# Tu función de menú ahora queda cortita:
+def borrar_usuario_especifico():
     username = input(f"\n{Color.GREEN}Usuario a eliminar: {Color.END}").strip()
-    
-    if username in users:
-        print(f" {Color.YELLOW}🗑️  Eliminando {username} del sistema...{Color.END}", end="\r")
-        
-        # 1. Matar procesos para que no esté "busy" (ocupado)
-        subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # 2. ELIMINACIÓN FÍSICA DE LINUX (Fundamental)
-        # -f fuerza la eliminación incluso si hay procesos pendientes
-        # -r borraría también su carpeta home (úsalo si la creas)
-        result = subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        # 3. Quitar de tu base de datos JSON
-        del users[username]
-        
-        # 4. Guardar cambios en el JSON (Sin intentar sincronizar nada más)
-        if save_users({}, full_database=users):
-            moratech.log_action("admin", f"Usuario eliminado y purgado: {username}")
-            print(f"{' ' * 50}\r{Color.GREEN}✓ Usuario {username} purgado totalmente del servidor{Color.END}")
-        else:
-            print(f"\n{Color.RED}✗ Error al guardar cambios en la base de datos{Color.END}")
+    success, msg = ejecutar_borrado_fisico(username)
+    if success:
+        print(f"{Color.GREEN}✓ {msg}{Color.END}")
     else:
-        print(f"{Color.RED}✗ El usuario no existe en la base de datos{Color.END}")
-    
-    input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-    
+        print(f"{Color.RED}✗ {msg}{Color.END}")
+    input(f"\n{Color.CYAN}Presiona Enter...{Color.END}") 
+
 def borrar_iterativo():
     """Eliminar usuarios uno por uno - Corregido"""
     users = load_users()
@@ -1721,7 +1787,7 @@ def start_api_general_server():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     menu_api_general()  # ← CAMBIADO para volver al menú correcto
-    
+
 def stop_api_general_server():
     """Detener servidor API General"""
     clear_screen()
