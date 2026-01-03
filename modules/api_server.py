@@ -14,7 +14,7 @@ from functools import wraps
 from activaciones import registrar_activacion, obtener_activaciones, obtener_estadisticas
 
 # Agregar path de módulos
-sys.path.insert(0, '/usr/local/lib/moratech/modules')
+sys.path.insert(0, '/usr/local/lib/moratech')
 
 # Importar funciones de users
 from users import (
