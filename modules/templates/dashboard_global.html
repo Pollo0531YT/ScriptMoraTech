@@ -145,7 +145,7 @@
             <div class="nav-buttons">
                 <a href="/panel-control" class="btn">🎮 Panel de Control</a>
                 <button class="btn" onclick="showAddVPS()">➕ Agregar VPS</button>
-                <button class="btn" onclick="syncAll()">🔄 Sincronizar</button>
+                <button class="btn" id="btnSync" onclick="syncAll()">🔄 Sincronizar</button>
             </div>
         </div>
         
@@ -195,9 +195,27 @@
         }
         
         async function syncAll() {
-            const response = await fetch('/api/sync-all');
-            activaciones = await response.json();
-            mostrarTabla();
+            const btn = document.getElementById('btnSync');
+            btn.disabled = true;
+            btn.innerHTML = '⏳ Sincronizando...';
+            
+            try {
+                const response = await fetch('/api/sync-all');
+                activaciones = await response.json();
+                mostrarTabla();
+                
+                btn.innerHTML = '✓ Sincronizado';
+                setTimeout(() => {
+                    btn.innerHTML = '🔄 Sincronizar';
+                    btn.disabled = false;
+                }, 2000);
+            } catch (error) {
+                btn.innerHTML = '✗ Error';
+                setTimeout(() => {
+                    btn.innerHTML = '🔄 Sincronizar';
+                    btn.disabled = false;
+                }, 2000);
+            }
         }
         
         function mostrarTabla() {
