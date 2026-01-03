@@ -11,7 +11,7 @@ from flask import Flask, request, jsonify
 from pathlib import Path
 from functools import wraps
 
-from modules.activaciones import registrar_activacion, obtener_activaciones, obtener_estadisticas
+from activaciones import registrar_activacion, obtener_activaciones, obtener_estadisticas
 
 # Agregar path de módulos
 sys.path.insert(0, '/usr/local/lib/moratech/modules')
@@ -26,6 +26,7 @@ from users import (
 
 app = Flask(__name__)
 
+app.secret_key = 'moratech-key'
 # Clave secreta fija
 SECRET_KEY = "moratech-key"
 
