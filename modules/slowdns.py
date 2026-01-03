@@ -2,7 +2,7 @@ import os
 import subprocess
 import json
 import time
-from common import Color, print_line, print_banner, clear_screen, PROTOCOLS_FILE
+from modules.common import Color, print_line, print_banner, clear_screen, PROTOCOLS_FILE
 
 # --- CONFIGURACIÓN DE RUTAS ---
 SLOW_DIR = "/etc/moratech/slowdns"
