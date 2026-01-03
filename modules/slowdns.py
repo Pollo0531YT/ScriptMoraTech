@@ -427,23 +427,27 @@ def menu_slowdns():
                 # mostrar KEY COMPLETA (según pediste)
                 print(f" {Color.CYAN}Key completa:{Color.END} {Color.YELLOW}{MASTER_PRIV}{Color.END}")
                 input(f"\n{Color.CYAN}Presiona Enter para volver...{Color.END}")
+                
             elif choice == "4":
-                # logs: prefer journalctl
+                # Mostrar sólo logs NUEVOS desde el momento en que se abre el visor
                 if os.path.exists("/etc/systemd/system/server-sldns.service"):
-                    print(f"\n {Color.YELLOW}Abriendo journalctl -u server-sldns (Ctrl+C para salir){Color.END}\n")
+                    print(f"\n {Color.YELLOW}Abriendo journalctl -u server-sldns (solo ENTRADAS NUEVAS, Ctrl+C para salir){Color.END}\n")
                     try:
-                        run(["bash", "-c", "journalctl -u server-sldns -n 200 --no-pager -f"])
+                        # -n 0 evita mostrar líneas previas, --since now asegura empezar "desde ahora"
+                        run(["bash", "-c", "journalctl -u server-sldns -n 0 --no-pager -f --since \"now\""])
                     except KeyboardInterrupt:
                         pass
                 elif os.path.exists(LOG_FILE):
-                    print(f"\n {Color.YELLOW}Abriendo tail -f {LOG_FILE} (Ctrl+C para salir){Color.END}\n")
+                    print(f"\n {Color.YELLOW}Abriendo tail -f {LOG_FILE} (solo ENTRADAS NUEVAS, Ctrl+C para salir){Color.END}\n")
                     try:
-                        run(["bash", "-c", f"tail -n 200 -f {LOG_FILE}"])
+                        # -n 0 --> no mostrar líneas previas, sólo nuevas
+                        run(["bash", "-c", f"tail -n 0 -f {LOG_FILE}"])
                     except KeyboardInterrupt:
                         pass
                 else:
                     print(f"\n {Color.RED}No hay logs disponibles.{Color.END}")
                     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+
             elif choice == "5":
                 confirm = input(f"{Color.YELLOW}¿Eliminar todo (binarios, keys, units)? (s/N): {Color.END}").strip().lower()
                 if confirm == "s":
