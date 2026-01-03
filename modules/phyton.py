@@ -58,7 +58,7 @@ def menu_phyton():
             input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def install_proxy():
-    """Instalar Proxy Python con respuesta HTTP corregida"""
+    """Instalar Proxy Python con configuración dinámica (Websocket/Direct)"""
     import subprocess
     import json
     import time
@@ -66,43 +66,67 @@ def install_proxy():
     clear_screen()
     print_banner()
     print_line()
-    print(f" {Color.CYAN}REPARANDO PROXY PYTHON{Color.END}")
+    print(f" {Color.CYAN}INSTALADOR PROXY PYTHON DINÁMICO{Color.END}")
     print_line()
 
-    # 1. Datos
+    # 1. Recolección de Datos
     port = input(f"\n {Color.GREEN}Puerto para Proxy (default 80): {Color.END}").strip() or "80"
-    local_port = input(f" {Color.GREEN}Puerto Local de Destino (SSH) [22]: {Color.END}").strip() or "22"
     
-    print(f"\n {Color.YELLOW}--- CONFIGURACIÓN ---{Color.END}")
-    status_code = input(f" {Color.GREEN}Status (101 o 200) [101]: {Color.END}").strip() or "101"
-    mini_banner = input(f" {Color.GREEN}Mini-Banner (opcional): {Color.END}").strip()
+    local_port = input(f" {Color.GREEN}Puerto Local de Destino (SSH/Dropbear) [22]: {Color.END}").strip() or "22"
+    
+    print(f"\n {Color.YELLOW}--- CONFIGURACIÓN DE RESPUESTA ---{Color.END}")
+    print(" [101] Para OVER WEBSOCKET")
+    print(" [200] Para Connection Established")
+    status_code = input(f" {Color.GREEN}Status de Respuesta [101]: {Color.END}").strip() or "101"
 
-    # Formatear el Banner para el script de Python
-    # NOTA: Usamos r'' para que no haya líos con los escapes
+    print(f"\n {Color.YELLOW}--- MINI BANNER (Opcional) ---{Color.END}")
+    mini_banner = input(f" {Color.GREEN}Texto o HTML para el banner: {Color.END}").strip()
+
+    # Formatear Response y Banner
     banner_payload = f"<br><font color='green'>{mini_banner}</font><br>" if mini_banner else ""
     
     if status_code == "101":
-        response_data = f"HTTP/1.1 101 Switching Protocols!\\r\\n\\r\\n{banner_payload}"
+        response_str = f"HTTP/1.1 101 Switching Protocols!\\r\\n\\r\\n{banner_payload}"
     else:
-        response_data = f"HTTP/1.1 {status_code} Connection Established\\r\\n\\r\\n{banner_payload}"
+        response_str = f"HTTP/1.1 {status_code} Connection Established\\r\\n\\r\\n{banner_payload}"
 
-    # 2. Limpieza extrema del puerto
-    print(f" {Color.YELLOW}Limpiando puerto {port}...{Color.END}")
-    os.system(f"fuser -k {port}/tcp > /dev/null 2>&1")
-    os.system("pkill -f proxy.py")
-    time.sleep(1)
+    # 2. Liberar puerto si está ocupado
+    try:
+        result = subprocess.run(['lsof', '-ti', f':{port}'], capture_output=True, text=True)
+        pids = result.stdout.strip()
+        if pids:
+            print(f"\n {Color.RED}⚠ Liberando puerto {port}...{Color.END}")
+            for pid in pids.split('\n'):
+                subprocess.run(['kill', '-9', pid], stderr=subprocess.DEVNULL)
+            time.sleep(1)
+    except:
+        pass
 
-    # 3. Construcción del Script (El corazón del proxy)
-    proxy_script = r"""#!/usr/bin/env python2
+    print(f"\n {Color.YELLOW}Instalando dependencias...{Color.END}")
+    try:
+        # Detener procesos previos
+        subprocess.run(['pkill', '-f', 'pythonwe'], stderr=subprocess.DEVNULL)
+        
+        # Instalación de paquetes necesarios
+        subprocess.run(['apt-get', 'update'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(['apt-get', 'install', 'python2', 'screen', 'lsof', '-y'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+        # 3. Construcción del Script Proxy.py
+        proxy_script = f"""#!/usr/bin/env python2
 # -*- coding: utf-8 -*-
-import socket, threading, select, sys, time
+import socket, threading, thread, select, signal, sys, time, getopt
 
+# CONFIG
 LISTENING_ADDR = '0.0.0.0'
-LISTENING_PORT = """ + port + r"""
-DEFAULT_HOST = "127.0.0.1:""" + local_port + r""""
-RESPONSE = '""" + response_data + r"""'
-BUFLEN = 4096 * 4
+LISTENING_PORT = {port}
+PASS = ''
 
+# CONST
+BUFLEN = 4096 * 4
+TIMEOUT = 60
+DEFAULT_HOST = "127.0.0.1:{local_port}"
+RESPONSE = '{response_str}'
+ 
 class Server(threading.Thread):
     def __init__(self, host, port):
         threading.Thread.__init__(self)
@@ -110,78 +134,219 @@ class Server(threading.Thread):
         self.host = host
         self.port = port
         self.threads = []
+        self.threadsLock = threading.Lock()
+        self.logLock = threading.Lock()
 
     def run(self):
         self.soc = socket.socket(socket.AF_INET)
         self.soc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.soc.settimeout(2)
         self.soc.bind((self.host, self.port))
         self.soc.listen(0)
         self.running = True
-        try:
+
+        try:                    
             while self.running:
-                c, addr = self.soc.accept()
+                try:
+                    c, addr = self.soc.accept()
+                    c.setblocking(1)
+                except socket.timeout:
+                    continue
+                
                 conn = ConnectionHandler(c, self, addr)
-                conn.start()
+                conn.start();
+                self.addConn(conn)
+        finally:
+            self.running = False
+            self.soc.close()
+            
+    def printLog(self, log):
+        self.logLock.acquire()
+        print log
+        self.logLock.release()
+    
+    def addConn(self, conn):
+        try:
+            self.threadsLock.acquire()
+            if self.running:
                 self.threads.append(conn)
         finally:
-            self.soc.close()
+            self.threadsLock.release()
+                    
+    def removeConn(self, conn):
+        try:
+            self.threadsLock.acquire()
+            self.threads.remove(conn)
+        finally:
+            self.threadsLock.release()
+                
+    def close(self):
+        try:
+            self.running = False
+            self.threadsLock.acquire()
+            threads = list(self.threads)
+            for c in threads:
+                c.close()
+        finally:
+            self.threadsLock.release()
+            
 
 class ConnectionHandler(threading.Thread):
     def __init__(self, socClient, server, addr):
         threading.Thread.__init__(self)
+        self.clientClosed = False
+        self.targetClosed = True
         self.client = socClient
+        self.client_buffer = ''
         self.server = server
+        self.log = 'Connection: ' + str(addr)
+
+    def close(self):
+        try:
+            if not self.clientClosed:
+                self.client.shutdown(socket.SHUT_RDWR)
+                self.client.close()
+        except: pass
+        finally: self.clientClosed = True
+            
+        try:
+            if not self.targetClosed:
+                self.target.shutdown(socket.SHUT_RDWR)
+                self.target.close()
+        except: pass
+        finally: self.targetClosed = True
 
     def run(self):
         try:
-            data = self.client.recv(BUFLEN)
-            # Enviar el Response HTTP real (decodificando los \r\n)
-            self.target = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.target.connect(("127.0.0.1", """ + local_port + r"""))
+            self.client_buffer = self.client.recv(BUFLEN)
+            hostPort = self.findHeader(self.client_buffer, 'X-Real-Host')
             
-            # El truco: mandar la respuesta con los saltos de línea correctos
-            self.client.sendall(RESPONSE.decode('string_escape'))
-            
-            self.do_proxy()
-        except: pass
-        finally: self.client.close()
+            if hostPort == '': hostPort = DEFAULT_HOST
 
-    def do_proxy(self):
+            split = self.findHeader(self.client_buffer, 'X-Split')
+            if split != '': self.client.recv(BUFLEN)
+            
+            if hostPort != '':
+                passwd = self.findHeader(self.client_buffer, 'X-Pass')
+                if len(PASS) != 0 and passwd == PASS:
+                    self.method_CONNECT(hostPort)
+                elif len(PASS) != 0 and passwd != PASS:
+                    self.client.send('HTTP/1.1 400 WrongPass!\\r\\n\\r\\n')
+                elif hostPort.startswith('127.0.0.1') or hostPort.startswith('localhost'):
+                    self.method_CONNECT(hostPort)
+                else:
+                    self.client.send('HTTP/1.1 403 Forbidden!\\r\\n\\r\\n')
+            else:
+                self.client.send('HTTP/1.1 400 NoXRealHost!\\r\\n\\r\\n')
+        except Exception as e:
+            self.log += ' - error: ' + str(e)
+            self.server.printLog(self.log)
+        finally:
+            self.close()
+            self.server.removeConn(self)
+
+    def findHeader(self, head, header):
+        aux = head.find(header + ': ')
+        if aux == -1: return ''
+        aux = head.find(':', aux)
+        head = head[aux+2:]
+        aux = head.find('\\r\\n')
+        if aux == -1: return ''
+        return head[:aux];
+
+    def connect_target(self, host):
+        i = host.find(':')
+        if i != -1:
+            port = int(host[i+1:])
+            host = host[:i]
+        else: port = 80
+        (soc_family, soc_type, proto, _, address) = socket.getaddrinfo(host, port)[0]
+        self.target = socket.socket(soc_family, soc_type, proto)
+        self.targetClosed = False
+        self.target.connect(address)
+
+    def method_CONNECT(self, path):
+        self.log += ' - CONNECT ' + path
+        self.connect_target(path)
+        self.client.sendall(RESPONSE)
+        self.client_buffer = ''
+        self.server.printLog(self.log)
+        self.doCONNECT()
+
+    def doCONNECT(self):
         socs = [self.client, self.target]
+        count = 0
+        error = False
         while True:
-            recv, _, err = select.select(socs, [], socs, 3)
-            if err or not recv: break
-            for in_ in recv:
-                data = in_.recv(BUFLEN)
-                if not data: return
-                if in_ is self.target: self.client.send(data)
-                else: self.target.send(data)
+            count += 1
+            (recv, _, err) = select.select(socs, [], socs, 3)
+            if err: error = True
+            if recv:
+                for in_ in recv:
+                    try:
+                        data = in_.recv(BUFLEN)
+                        if data:
+                            if in_ is self.target: self.client.send(data)
+                            else:
+                                while data:
+                                    byte = self.target.send(data)
+                                    data = data[byte:]
+                            count = 0
+                        else: break
+                    except:
+                        error = True
+                        break
+            if count == TIMEOUT or error: break
 
 def main():
-    print "Proxy iniciado en puerto " + str(LISTENING_PORT)
+    print "\\n=============================="
+    print "      PYTHON PROXY DINAMICO"
+    print "=============================="
+    print "Puerto Proxy: " + str(LISTENING_PORT)
+    print "Puerto Local: " + DEFAULT_HOST
+    print "Iniciado correctamente\\n"
     server = Server(LISTENING_ADDR, LISTENING_PORT)
     server.start()
-    while True: time.sleep(10)
+    while True:
+        try: time.sleep(2)
+        except KeyboardInterrupt:
+            server.close()
+            break
 
 if __name__ == '__main__':
     main()
 """
 
-    # 4. Guardar y Lanzar
-    with open('/root/proxy.py', 'w') as f:
-        f.write(proxy_script)
-    
-    os.system("chmod +x /root/proxy.py")
-    print(f" {Color.YELLOW}Iniciando en Screen...{Color.END}")
-    os.system("screen -dmS pythonwe python2 /root/proxy.py")
-    
-    # Firewall
-    os.system(f"iptables -I INPUT -p tcp --dport {port} -j ACCEPT")
-    
-    print(f"\n {Color.GREEN}✓ PROXY REPARADO EN PUERTO {port}{Color.END}")
-    print(f" {Color.CYAN}Si usas TLS/SSL, recuerda que el Stunnel debe apuntar al puerto {port}{Color.END}")
-    input("\nPresiona Enter...")
-    
+        # 4. Guardar e Iniciar
+        with open('/root/proxy.py', 'w') as f:
+            f.write(proxy_script)
+        
+        subprocess.run(['chmod', '+x', '/root/proxy.py'])
+        
+        print(f" {Color.YELLOW}Iniciando en Screen 'pythonwe'...{Color.END}")
+        subprocess.run(['screen', '-dmS', 'pythonwe', 'python2', '/root/proxy.py'])
+        time.sleep(2)
+
+        # 5. Firewall y Configuración Final
+        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        
+        # Guardar en archivo de protocolos
+        with open(PROTOCOLS_FILE, 'r') as f:
+            protocols = json.load(f)
+        protocols['proxy']['enabled'] = True
+        protocols['proxy']['port'] = int(port)
+        with open(PROTOCOLS_FILE, 'w') as f:
+            json.dump(protocols, f, indent=4)
+
+        print(f"\n {Color.GREEN}✓ PROXY INSTALADO EXITOSAMENTE{Color.END}")
+        print(f" {Color.CYAN}Puerto: {port} -> Destino Local: {local_port}{Color.END}")
+        print(f" {Color.CYAN}Response: {status_code}{Color.END}")
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error crítico: {e}{Color.END}")
+
+    input(f"\n {Color.CYAN}Presiona Enter para volver...{Color.END}")
+
 def stop_proxy():
     """Detener Proxy Python"""
     clear_screen()
