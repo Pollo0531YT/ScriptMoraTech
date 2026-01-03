@@ -1732,14 +1732,19 @@ def start_api_general_server():
     
     try:
         import os
-        api_script = os.path.join(os.path.dirname(__file__), 'api_general.py')
+        # directorio raíz del proyecto (uno arriba del directorio 'modules')
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
         
-        if not os.path.exists(api_script):
-            print(f" {Color.RED}✗ Error: api_general.py no encontrado{Color.END}")
+        api_module = 'modules.api_general'  # lanzaremos con -m para evitar colisiones con módulos locales
+        
+        # Verificar que exista el paquete / módulo (opcionalmente)
+        api_path = os.path.join(project_root, 'modules', 'api_general.py')
+        if not os.path.exists(api_path):
+            print(f" {Color.RED}✗ Error: api_general.py no encontrado en {api_path}{Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
         
-        # Verificar Flask
+        # Verificar Flask (instalación mínima)
         check_flask = subprocess.run(['python3', '-c', 'import flask'], 
                                     capture_output=True, text=True)
         
@@ -1750,34 +1755,38 @@ def start_api_general_server():
             print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
         
         # Abrir puerto
-        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        try:
+            subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
         
-        # Iniciar servidor
+        # Iniciar servidor usando -m desde el root del proyecto (evita que 'modules' sea sys.path[0])
         import time
+        cmd = ['python3', '-m', api_module, port]
         subprocess.run([
-            'screen', '-dmS', 'moratech_api_general',
-            'python3', api_script, port
-        ])
+            'screen', '-dmS', 'moratech_api_general'
+        ] + cmd, cwd=project_root)
         
         time.sleep(2)
         
-        # Verificar
+        # Verificar si el screen se creó
         check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
         if 'moratech_api_general' not in check.stdout:
             print(f"\n {Color.RED}✗ El servidor no pudo iniciar{Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
         
-        # Guardar puerto  ← NUEVO
+        # Guardar puerto
         port_file = CONFIG_DIR / 'api_general_port.txt'
+        CONFIG_DIR.mkdir(exist_ok=True)
         with open(port_file, 'w') as f:
             f.write(port)
         
-        # Obtener IP
+        # Obtener IP para mostrar URLs (intentar curl, fallback a placeholder)
         try:
             ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
-            server_ip = ip_result.stdout.strip()
+            server_ip = ip_result.stdout.strip() or "TU_IP"
         except:
             server_ip = "TU_IP"
         
@@ -1793,7 +1802,8 @@ def start_api_general_server():
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-    menu_api_general()  # ← CAMBIADO para volver al menú correcto
+    menu_api_general()
+
 
 def stop_api_general_server():
     """Detener servidor API General"""
