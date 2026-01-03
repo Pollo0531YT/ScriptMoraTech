@@ -57,19 +57,6 @@ chown -R root:root "$INSTALL_DIR"
 chmod -R 755 "$INSTALL_DIR"
 echo -e "${GREEN}✓ Permisos configurados${NC}"
 
-# 6. Registrar servicio opcional (no requerido) - omitido por ahora
-
-# 7. Ejecutar setup_expire_system para crear wrapper + cron (como root)
-echo -e "${YELLOW}[6/7] Configurando expiración automática (cron)...${NC}"
-python3 - <<'PY'
-import sys
-sys.path.insert(0, '/usr/local/lib/moratech')
-from modules import expire_setup
-ok = expire_setup.setup_expire_system()
-print("OK" if ok else "FAIL")
-PY
-echo -e "${GREEN}✓ Configuración de expiración intentada${NC}"
-
 # Finalizar
 echo -e "${YELLOW}[7/7] Finalizando instalación...${NC}"
 echo ""
