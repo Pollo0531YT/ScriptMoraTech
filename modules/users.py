@@ -62,7 +62,7 @@ def control_usuarios_menu():
         elif choice == '11':
             menu_api_server()
         elif choice == '12':
-            start_api_general_server()
+            start_api_general_server
         elif choice == '14':
             reset_token_password()
         elif choice == '0':
@@ -1512,7 +1512,7 @@ def start_api_server():
     print(f" {Color.CYAN}INICIAR SERVIDOR API{Color.END}")
     print_line()
     
-    # Verificar si ya tiene nombre configurado
+    # Verificar/Configurar nombre de VPS
     vps_name_file = CONFIG_DIR / 'vps_name.txt'
     
     if not vps_name_file.exists():
@@ -1526,13 +1526,12 @@ def start_api_server():
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
         
-        # Guardar nombre
+        CONFIG_DIR.mkdir(exist_ok=True)
         with open(vps_name_file, 'w') as f:
             f.write(vps_name)
         
         print(f" {Color.GREEN}✓ Nombre configurado: {vps_name}{Color.END}")
     else:
-        # Mostrar nombre actual
         with open(vps_name_file, 'r') as f:
             vps_name = f.read().strip()
         print(f"\n {Color.CYAN}Nombre de VPS: {Color.GREEN}{vps_name}{Color.END}")
@@ -1540,7 +1539,72 @@ def start_api_server():
     port = input(f"\n {Color.GREEN}Puerto para API (default: 9000): {Color.END}").strip()
     if not port:
         port = "9000"
+    
+    print(f"\n {Color.YELLOW}Iniciando servidor API...{Color.END}")
+    
+    try:
+        import os
+        api_script = os.path.join(os.path.dirname(__file__), 'api_server.py')
         
+        if not os.path.exists(api_script):
+            print(f" {Color.RED}✗ Error: api_server.py no encontrado{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+        
+        check_flask = subprocess.run(['python3', '-c', 'import flask'], 
+                                    capture_output=True, text=True)
+        
+        if check_flask.returncode != 0:
+            print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
+            subprocess.run(['apt-get', 'install', '-y', 'python3-flask'],
+                         capture_output=True, text=True)
+            print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
+        else:
+            print(f" {Color.GREEN}✓ Flask disponible{Color.END}")
+        
+        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        
+        import time
+        subprocess.run([
+            'screen', '-dmS', 'moratech_api',
+            'python3', api_script, port
+        ])
+        
+        time.sleep(2)
+        
+        check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+        if 'moratech_api' not in check.stdout:
+            print(f"\n {Color.RED}✗ El servidor no pudo iniciar{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+        
+        port_file = CONFIG_DIR / 'api_port.txt'
+        with open(port_file, 'w') as f:
+            f.write(port)
+        
+        try:
+            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                                     capture_output=True, text=True, timeout=3)
+            server_ip = ip_result.stdout.strip()
+        except:
+            server_ip = "TU_IP"
+        
+        print(f"\n {Color.GREEN}✓ Servidor API iniciado{Color.END}")
+        print(f"\n {Color.CYAN}Configuración:{Color.END}")
+        print(f" {Color.CYAN}VPS: {Color.GREEN}{vps_name}{Color.END}")
+        print(f" {Color.CYAN}Puerto: {Color.GREEN}{port}{Color.END}")
+        print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/api/{Color.END}")
+        
+        moratech.log_action("admin", f"API Server '{vps_name}' iniciado en puerto {port}")
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        import traceback
+        traceback.print_exc()
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    menu_api_server()
+    
 def stop_api_server():
     """Detener servidor API"""
     clear_screen()
