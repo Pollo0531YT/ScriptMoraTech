@@ -68,7 +68,6 @@ def ensure_dirs():
 
 
 def apt_install(pkgs):
-    print("  ✓ Asegurando dependencias básicas...")
     run(["apt-get", "update"], capture=True)
     run(["apt-get", "install", "-y"] + pkgs)
 
@@ -78,8 +77,7 @@ def download_any(urls, dest):
     if os.path.exists(tmp):
         os.unlink(tmp)
     for url in urls:
-        print(f"    -> intentando: {url}")
-        # prefer curl
+        # intento silencioso
         if shutil.which("curl"):
             r = run(["curl", "-fsSL", "-o", tmp, url], capture=True)
             ok = (getattr(r, "returncode", 1) == 0 and os.path.exists(tmp) and os.path.getsize(tmp) > 0)
@@ -90,14 +88,12 @@ def download_any(urls, dest):
             shutil.move(tmp, dest)
             os.chmod(dest, 0o755)
             return True
-        # limpiar tmp y seguir al siguiente url
         if os.path.exists(tmp):
             os.unlink(tmp)
     return False
 
 
 def write_key(fixed_priv):
-    # escribe PRIV como fichero (no es la "clave PEM", es la key usada por sldns)
     with open(KEY_FILE, "w") as f:
         f.write(fixed_priv.strip() + "\n")
     os.chmod(KEY_FILE, 0o600)
@@ -154,7 +150,6 @@ WantedBy=multi-user.target
 
 def apply_iptables():
     # Añadir reglas concretas si no existen (no flush total)
-    print("  ✓ Aplicando reglas iptables necesarias...")
     # permitir loopback
     run(["iptables", "-C", "INPUT", "-i", "lo", "-j", "ACCEPT"], capture=True)
     run(["iptables", "-A", "INPUT", "-i", "lo", "-j", "ACCEPT"])
@@ -163,7 +158,7 @@ def apply_iptables():
     # aceptar 5300/udp
     run(["iptables", "-C", "INPUT", "-p", "udp", "--dport", "5300", "-j", "ACCEPT"], capture=True)
     run(["iptables", "-A", "INPUT", "-p", "udp", "--dport", "5300", "-j", "ACCEPT"])
-    # redirigir 53 -> 5300
+    # redirigir 53 -> 5300 si no existe
     ipt_save = run(["iptables-save"], capture=True)
     ipt_txt = ipt_save.stdout if hasattr(ipt_save, "stdout") else ""
     if "--to-ports 5300" not in ipt_txt:
@@ -174,81 +169,120 @@ def enable_and_start_services():
     run(["systemctl", "enable", "--now", "server-sldns"], capture=True)
     run(["systemctl", "enable", "--now", "client-sldns"], capture=True)
     time.sleep(1)
-    # check status (short)
     s1 = run(["systemctl", "is-active", "server-sldns"], capture=True)
     s2 = run(["systemctl", "is-active", "client-sldns"], capture=True)
     return (getattr(s1, "stdout", "").strip() == "active", getattr(s2, "stdout", "").strip() == "active")
 
 
+# -----------------------------
+# INSTALL_FLOW (reordenado y bonito)
+# -----------------------------
 def install_flow():
     ensure_root()
     ensure_dirs()
-    print("\n INSTALANDO SLOWDNS (MoraTech) - breve...")
-    # dependencies
-    apt_install(["curl", "wget", "screen", "iptables", "dnsutils", "python3", "git"])
-    print("  ✓ Dependencias OK.")
+    clear_screen()
+    print(f"{Color.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Color.END}")
+    print(f"{Color.CYAN} INSTALANDO SLOWDNS (MoraTech) - PROCESO SIMPLE{Color.END}")
+    print(f"{Color.CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━{Color.END}\n")
 
-    # opción key fija o random (por defecto fija)
+    # 0) Pedir NS y puerto primero
+    ns = input(f" {Color.GREEN}Dominio NS (ej: tu.ns.example.com): {Color.END}").strip()
+    if not ns:
+        print(f"\n {Color.RED}✗ NS vacio. Abortando.{Color.END}")
+        input("\n Presiona Enter...")
+        return
+    lport = input(f" {Color.GREEN}Puerto SSH local en servidor (ej 22): {Color.END}").strip() or "22"
+
+    # Save early so menu info lo ve inmediatamente
+    save_config(ns, lport)
+
+    # Paso 1: dependencias
+    print(f"\n {Color.YELLOW}1) Instalando dependencias...{Color.END}")
+    try:
+        apt_install(["curl", "wget", "screen", "iptables", "dnsutils", "python3", "git"])
+        print(f"  {Color.GREEN}✓ Dependencias instaladas{Color.END}")
+    except Exception as e:
+        print(f"  {Color.RED}✗ Error instalando dependencias: {e}{Color.END}")
+        input("\n Presiona Enter...")
+        return
+
+    # Paso 2: key (fija o random)
+    print(f"\n {Color.YELLOW}2) Configurando key...{Color.END}")
     use_fixed = True
-    ans = input(" Usar KEY FIJA (recomendada) [S/n]: ").strip().lower()
+    ans = input(f" Usar KEY FIJA (recomendada) [S/n]: ").strip().lower()
     if ans == "n":
         use_fixed = False
-
     if use_fixed:
-        print("  -> Usando KEY FIJA (MASTER_PRIV).")
         write_key(MASTER_PRIV)
+        print(f"  {Color.GREEN}✓ Key fija escrita{Color.END}")
     else:
-        # generar key aleatoria de 64 hex chars
         import secrets
         newkey = secrets.token_hex(32)
-        print("  -> Generando key random.")
         write_key(newkey)
+        print(f"  {Color.GREEN}✓ Key random generada y escrita{Color.END}")
 
-    # descargar server.pub
-    print("  -> Descargando server.pub ...")
+    # Paso 3: descargar server.pub
+    print(f"\n {Color.YELLOW}3) Descargando server.pub...{Color.END}")
     ok_pub = download_any(PUB_URLS, PUB_FILE)
     if not ok_pub:
-        print(" ✗ No se pudo bajar server.pub. Abortar.")
+        print(f"  {Color.RED}✗ No se pudo descargar server.pub. Abortando.{Color.END}")
+        input("\n Presiona Enter...")
         return
+    print(f"  {Color.GREEN}✓ server.pub descargado{Color.END}")
 
-    # descargar binarios server & client
-    print("  -> Descargando sldns-server ...")
+    # Paso 4: descargar binarios
+    print(f"\n {Color.YELLOW}4) Descargando sldns-server y sldns-client...{Color.END}")
     ok = download_any(SERVER_URLS, SERVER_BIN)
     if not ok:
-        print(" ✗ Falló descarga sldns-server. Abortar.")
+        print(f"  {Color.RED}✗ Falló descarga sldns-server. Abortando.{Color.END}")
+        input("\n Presiona Enter...")
         return
-    print("  -> Descargando sldns-client ...")
     ok = download_any(CLIENT_URLS, CLIENT_BIN)
     if not ok:
-        print(" ✗ Falló descarga sldns-client. Abortar.")
+        print(f"  {Color.RED}✗ Falló descarga sldns-client. Abortando.{Color.END}")
+        input("\n Presiona Enter...")
         return
-
-    # permisos
     os.chmod(SERVER_BIN, 0o755)
     os.chmod(CLIENT_BIN, 0o755)
     os.chmod(PUB_FILE, 0o644)
     os.chmod(KEY_FILE, 0o600)
+    print(f"  {Color.GREEN}✓ Binarios listos{Color.END}")
 
-    # pedir NS y puertos
-    ns = input(" NS domain (ej: tu.ns.example.com): ").strip()
-    if not ns:
-        print(" ✗ NS vacio. Abortar.")
+    # Paso 5: iptables
+    print(f"\n {Color.YELLOW}5) Aplicando reglas de red (iptables)...{Color.END}")
+    try:
+        apply_iptables()
+        print(f"  {Color.GREEN}✓ Reglas aplicadas{Color.END}")
+    except Exception as e:
+        print(f"  {Color.RED}✗ Error aplicando iptables: {e}{Color.END}")
+        # seguimos aunque iptables falle; usuario lo revisa
+    # Paso 6: crear unidades systemd
+    print(f"\n {Color.YELLOW}6) Creando servicios systemd...{Color.END}")
+    try:
+        create_systemd_units(ns, lport)
+        print(f"  {Color.GREEN}✓ Units creadas{Color.END}")
+    except Exception as e:
+        print(f"  {Color.RED}✗ Error creando units: {e}{Color.END}")
+        input("\n Presiona Enter...")
         return
-    lport = input(" Puerto SSH local en servidor (ej 22): ").strip() or "22"
 
-    save_config(ns, lport)
-    apply_iptables()
-    create_systemd_units(ns, lport)
+    # Paso 7: activar servicios
+    print(f"\n {Color.YELLOW}7) Activando servicios...{Color.END}")
     active_server, active_client = enable_and_start_services()
     if active_server and active_client:
-        print("\n ✓ slowdns instalado y servicios activos.")
-        print(f"   Logs: journalctl -u server-sldns -n 200 --no-pager")
+        print(f"  {Color.GREEN}✓ Servicios activos{Color.END}")
+        print(f"\n {Color.GREEN}✓ slowdns instalado y servicios activos.{Color.END}")
+        print(f"   Logs: {Color.CYAN}journalctl -u server-sldns -n 200 --no-pager{Color.END}")
     else:
-        print("\n ¡Atención! Uno o ambos servicios NO iniciaron correctamente.")
-        print(" Revisa: journalctl -u server-sldns -n 200 --no-pager")
-    print("\n Fin.\n")
+        print(f"  {Color.RED}✗ Atención: uno o ambos servicios NO arrancaron.{Color.END}")
+        print(f"   Revisa: {Color.CYAN}journalctl -u server-sldns -n 200 --no-pager{Color.END}")
 
+    print("\n Fin del proceso.")
+    input("\n Presiona Enter...")
 
+# -------------------------
+# STOP / UNINSTALL FLOWS
+# -------------------------
 def stop_flow():
     ensure_root()
     run(["systemctl", "stop", "server-sldns"], capture=True)
@@ -257,12 +291,10 @@ def stop_flow():
     run(["systemctl", "disable", "client-sldns"], capture=True)
     run(["pkill", "-f", "sldns-server"], capture=True)
     run(["pkill", "-f", "sldns-client"], capture=True)
-    print(" Servicios slowdns detenidos.")
-
+    print(f"\n {Color.GREEN}✓ Servicios slowdns detenidos.{Color.END}")
 
 def uninstall_flow():
     stop_flow()
-    # eliminar archivos
     for p in (SERVER_BIN, CLIENT_BIN, KEY_FILE, PUB_FILE, CONFIG_FILE, LOG_FILE):
         try:
             if os.path.exists(p):
@@ -276,8 +308,7 @@ def uninstall_flow():
         except Exception:
             pass
     run(["systemctl", "daemon-reload"], capture=True)
-    print(" Uninstall completo (archivos eliminados).")
-
+    print(f"\n {Color.GREEN}✓ Uninstall completo (archivos eliminados).{Color.END}")
 
 # -------------------------
 # MENU (limpio, con colores)
@@ -306,6 +337,7 @@ def menu_slowdns():
             print(f" {Color.GREEN}3.{Color.END} Info")
             print(f" {Color.GREEN}4.{Color.END} Ver logs")
             print(f" {Color.GREEN}5.{Color.END} Desinstalar (elimina binarios & units)")
+            print(f" {Color.GREEN}6.{Color.END} Reiniciar servidor")
             print(f" {Color.GREEN}0.{Color.END} Volver")
             print_line()
 
@@ -327,7 +359,8 @@ def menu_slowdns():
                 print_line()
                 print(f" {Color.CYAN}NS:{Color.END} {Color.GREEN}{conf.get('ns')}{Color.END}")
                 print(f" {Color.CYAN}Puerto SSH local:{Color.END} {Color.GREEN}{conf.get('port')}{Color.END}")
-                print(f" {Color.CYAN}Key (preview):{Color.END} {Color.YELLOW}{MASTER_PRIV[:20]}...{Color.END}")
+                # mostrar KEY COMPLETA (según pediste)
+                print(f" {Color.CYAN}Key completa:{Color.END} {Color.YELLOW}{MASTER_PRIV}{Color.END}")
                 input(f"\n{Color.CYAN}Presiona Enter para volver...{Color.END}")
             elif choice == "4":
                 # logs: prefer journalctl
@@ -354,6 +387,16 @@ def menu_slowdns():
                 else:
                     print(f"{Color.YELLOW}Cancelado.{Color.END}")
                     time.sleep(0.6)
+            elif choice == "6":
+                confirm = input(f"{Color.RED}¿Reiniciar ESTE SERVIDOR AHORA? (s/N): {Color.END}").strip().lower()
+                if confirm == "s":
+                    print(f"\n {Color.YELLOW}Reiniciando...{Color.END}")
+                    run(["reboot"])
+                    # si reboot falla por permiso, lo notifica y vuelve
+                    time.sleep(3)
+                else:
+                    print(f"{Color.YELLOW}Reinicio cancelado.{Color.END}")
+                    time.sleep(0.6)
             elif choice == "0":
                 break
             else:
@@ -362,4 +405,5 @@ def menu_slowdns():
 
         except KeyboardInterrupt:
             break
+
 
