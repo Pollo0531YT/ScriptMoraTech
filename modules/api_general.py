@@ -117,12 +117,13 @@ def api_vps_add():
     
     return jsonify({'success': True, 'vps': nueva_vps}), 200
 
-# MEJORADO
 @app.route('/api/gestionar-token', methods=['POST'])
 @require_auth
 def api_gestionar_token():
     """
-    Gestionar token en VPS seleccionadas con lógica de respuesta mejorada
+    Gestionar token en VPS seleccionadas
+    - Si existe en CheckUser → RENOVAR
+    - Si no existe → CREAR NUEVO
     """
     data = request.get_json()
     
@@ -139,6 +140,7 @@ def api_gestionar_token():
     config = load_vps_config()
     resultados = []
     
+    # Si no hay VPS seleccionadas, usar todas activas
     if not vps_ids:
         vps_ids = [v['id'] for v in config['vps_list'] if v['activo']]
     
@@ -147,10 +149,11 @@ def api_gestionar_token():
             continue
         
         try:
-            # 1. Consultar CheckUser
+            # 1. Consultar CheckUser para saber si existe
             status = check_token_status(vps['url_checkuser'], token)
             
             if status == 'not_exist':
+                # CREAR NUEVO
                 endpoint = f"{vps['url_api']}/api/token"
                 payload = {
                     'nombre': nombre,
@@ -162,9 +165,10 @@ def api_gestionar_token():
                 accion = 'creado'
             
             elif status == 'exists':
+                # RENOVAR
                 endpoint = f"{vps['url_api']}/api/renovar"
                 payload = {
-                    'user': token, # Para renovar usamos 'user' como definimos en api_server
+                    'user': token,
                     'dias': dias,
                     'referencia': referencia,
                     'origen': origen
@@ -172,15 +176,16 @@ def api_gestionar_token():
                 accion = 'renovado'
             
             else:
+                # ERROR en CheckUser
                 resultados.append({
                     'vps_nombre': vps['nombre'],
                     'vps_id': vps['id'],
                     'success': False,
-                    'error': 'CheckUser no responde correctamente'
+                    'error': 'CheckUser no responde'
                 })
                 continue
             
-            # 2. Ejecutar acción
+            # 2. Ejecutar acción (crear o renovar)
             response = requests.post(
                 endpoint,
                 headers={
@@ -188,23 +193,13 @@ def api_gestionar_token():
                     'X-Auth-Key': SECRET_KEY
                 },
                 json=payload,
-                timeout=12 # Aumentado un poco para evitar cortes
+                timeout=10
             )
             
-            # Intentar obtener el JSON de respuesta
-            try:
-                result = response.json()
-            except:
-                result = {'success': False, 'error': 'Respuesta no válida del servidor'}
-
+            result = response.json()
             result['vps_nombre'] = vps['nombre']
             result['vps_id'] = vps['id']
             result['accion'] = accion
-            
-            # Asegurar que success venga en el resultado según el status code
-            if 'success' not in result:
-                result['success'] = response.status_code in [200, 201]
-                
             resultados.append(result)
         
         except Exception as e:
@@ -216,10 +211,9 @@ def api_gestionar_token():
             })
     
     return jsonify({
-        'token': token, # Agregado para saber de quién hablamos
         'resultados': resultados,
         'total': len(resultados),
-        'exitosos': len([r for r in resultados if r.get('success') == True])
+        'exitosos': len([r for r in resultados if r.get('success')])
     }), 200
 
 def check_token_status(vps_url_checkuser, token):
