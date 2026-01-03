@@ -401,6 +401,12 @@ def api_borrar():
 @require_auth
 def dashboard():
     """Dashboard web de activaciones"""
+    from flask import session, redirect
+
+    # Verificar si está autenticado
+    if not session.get('authenticated'):
+        return redirect('/login')
+
     html = '''
 <!DOCTYPE html>
 <html lang="es">
@@ -672,6 +678,83 @@ def api_estadisticas():
     """Obtener estadísticas de activaciones"""
     stats = obtener_estadisticas()
     return jsonify(stats), 200
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    """Página de login para dashboard"""
+    from flask import session, redirect
+    
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if password == SECRET_KEY:
+            session['authenticated'] = True
+            return redirect('/dashboard')
+        else:
+            return '''
+            <html>
+            <body style="font-family: Arial; text-align: center; padding: 50px;">
+                <h1 style="color: red;">Contraseña incorrecta</h1>
+                <a href="/login">Volver</a>
+            </body>
+            </html>
+            '''
+    
+    return '''
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>MORATECH Login</title>
+        <style>
+            body {
+                font-family: Arial, sans-serif;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                height: 100vh;
+                margin: 0;
+            }
+            .login-box {
+                background: white;
+                padding: 40px;
+                border-radius: 10px;
+                box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+                text-align: center;
+            }
+            h1 { color: #667eea; margin-bottom: 30px; }
+            input {
+                width: 100%;
+                padding: 12px;
+                margin: 10px 0;
+                border: 2px solid #ddd;
+                border-radius: 5px;
+                font-size: 16px;
+            }
+            button {
+                width: 100%;
+                padding: 12px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                border-radius: 5px;
+                font-size: 16px;
+                cursor: pointer;
+                margin-top: 10px;
+            }
+            button:hover { opacity: 0.9; }
+        </style>
+    </head>
+    <body>
+        <div class="login-box">
+            <h1>🚀 MORATECH</h1>
+            <form method="POST">
+                <input type="password" name="password" placeholder="Contraseña" required autofocus>
+                <button type="submit">Acceder al Dashboard</button>
+            </form>
+        </div>
+    </body>
+    </html>
+    '''
 
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 9000
