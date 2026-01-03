@@ -66,32 +66,9 @@ def install_proxy():
     print(f" {Color.CYAN}INSTALANDO PROXY PYTHON{Color.END}")
     print_line()
 
-    # 1. Puerto del Proxy (Externo)
-    port = input(f"\n {Color.GREEN}Puerto para el Proxy (Ej: 80, 8080): {Color.END}").strip() or "80"
-
-    # 2. Puerto Local (SSH / Dropbear)
-    local_port = input(f" {Color.GREEN}Puerto Local de Destino (SSH/Dropbear) [22]: {Color.END}").strip() or "22"
-
-    # 3. Response Status (101, 200, etc)
-    print(f"\n {Color.YELLOW}--- CONFIGURACIÓN DE RESPUESTA ---{Color.END}")
-    print(" Para Websocket usa [101]. Para estándar usa [200].")
-    status_code = input(f" {Color.GREEN}Status de Respuesta [101]: {Color.END}").strip() or "101"
-    
-    # 4. Mini-Banner (HTML o Texto)
-    print(f"\n {Color.YELLOW}--- MINI BANNER ---{Color.END}")
-    mini_banner = input(f" {Color.GREEN}Introduzca Mini-Banner (Enter para ninguno): {Color.END}").strip()
-
-    # Formatear el Banner si existe
-    banner_payload = ""
-    if mini_banner:
-        banner_payload = f"<br><font color='green'>{mini_banner}</font><br>"
-
-    # Construir el Response String
-    # Si es 101, suele ir con Switching Protocols, si es 200 con Connection Established
-    if status_code == "101":
-        response_str = f"HTTP/1.1 101 Switching Protocols!\\r\\n\\r\\n{banner_payload}"
-    else:
-        response_str = f"HTTP/1.1 {status_code} Connection Established\\r\\n\\r\\n{banner_payload}"
+    port = input(f"\n {Color.GREEN}Puerto para Proxy (default 80): {Color.END}").strip()
+    if not port:
+        port = "80"
 
     # Verificar y liberar puerto si está ocupado
     try:
