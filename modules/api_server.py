@@ -12,6 +12,7 @@ from pathlib import Path
 from functools import wraps
 
 from activaciones import registrar_activacion, obtener_activaciones, obtener_estadisticas
+from users import ejecutar_borrado_fisico, ejecutar_creacion_usuario, ejecutar_reinicio_dias, ejecutar_renovacion_dias
 
 # Agregar path de módulos
 sys.path.insert(0, '/usr/local/lib/moratech')
@@ -87,122 +88,92 @@ def api_status():
     log_api_request('/api/status', {}, 'OK')
     return jsonify(result), 200
 
+#MEJORADO
 @app.route('/api/agregar', methods=['POST'])
 @require_auth
 def api_agregar_ssh():
-    """Agregar usuario SSH - Usa lógica de users.py"""
+    """Agregar usuario SSH - Usa lógica centralizada con registro de activaciones"""
     try:
-        from datetime import timedelta
-        
         data = request.get_json()
         username = data.get('user')
         password = data.get('password')
-        max_conn = data.get('limite', 1)
         days = data.get('dias', 0)
-        
+        max_conn = data.get('limite', 1)
+        referencia = data.get('referencia', '')
+        origen = data.get('origen', 'api')
+
         if not username or not password:
             log_api_request('/api/agregar', data, 'Missing parameters')
+            registrar_activacion('agregar_ssh', username, username, days, referencia, origen, False, 'Faltan datos')
             return jsonify({'error': 'user y password requeridos'}), 400
+
+        # LLAMADA A LA FUNCIÓN MAESTRA (Creación técnica en Linux y JSON)
+        success, msg, expires = ejecutar_creacion_usuario(
+            username, 
+            password, 
+            days, 
+            user_type="ssh", 
+            max_conn=max_conn
+        )
         
-        users = load_users()
-        
-        if username in users:
-            log_api_request('/api/agregar', data, 'User exists')
-            return jsonify({'error': 'Usuario ya existe'}), 400
-        
-        # Calcular expiración a las 6pm (igual que add_ssh_user)
-        if days >= 0:
-            expire_date = (datetime.now().date() + timedelta(days=days))
-            expires = datetime.combine(expire_date, datetime.min.time()).replace(
-                hour=18, minute=0, second=0
-            ).isoformat()
-        else:
-            expires = None
-        
-        users[username] = {
-            "password": password,
-            "role": "user",
-            "type": "ssh",
-            "created": datetime.now().isoformat(),
-            "expires": expires,
-            "max_connections": int(max_conn),
-            "enabled": True
-        }
-        
-        new_user = {username: users[username]}
-        if save_users(new_user, full_database=users):
+        if success:
+            # ✅ REGISTRO DE ACTIVACIÓN EXITOSA
+            registrar_activacion('agregar_ssh', username, username, days, referencia, origen, True)
+            
             result = {
-                'success': True,
-                'user': username,
+                'success': True, 
+                'user': username, 
                 'dias': days,
                 'expira': expires
             }
             log_api_request('/api/agregar', data, 'OK')
             return jsonify(result), 200
         else:
-            log_api_request('/api/agregar', data, 'Save failed')
-            return jsonify({'error': 'Error guardando usuario'}), 500
-        
+            # ✅ REGISTRO DE FALLO (ej: usuario ya existe)
+            registrar_activacion('agregar_ssh', username, username, days, referencia, origen, False, msg)
+            log_api_request('/api/agregar', data, f'Failed: {msg}')
+            return jsonify({'error': msg}), 400
+
     except Exception as e:
         log_api_request('/api/agregar', data, f'Error: {e}')
         return jsonify({'error': str(e)}), 500
 
+#MEJORADO
 @app.route('/api/token', methods=['POST'])
 @require_auth
 def api_agregar_token():
-    """Agregar usuario TOKEN - Usa lógica de users.py"""
+    """Agregar usuario TOKEN - Usa lógica centralizada pero mantiene sus logs"""
     try:
-        from datetime import timedelta
-        
         data = request.get_json()
         nombre = data.get('nombre')
         token = data.get('token')
         days = data.get('dias', 0)
         referencia = data.get('referencia', '')  
-        origen = data.get('origen', 'manual') 
+        origen = data.get('origen', 'api') # Marcamos que viene de la API
         
         if not nombre or not token:
             log_api_request('/api/token', data, 'Missing parameters')
             registrar_activacion('agregar_token', token, nombre, days, referencia, origen, False, 'Parámetros faltantes')
             return jsonify({'error': 'nombre y token requeridos'}), 400
         
-        users = load_users()
         token_config = load_token_config()
-        
-        if token in users:
-            log_api_request('/api/token', data, 'Token exists')
-            registrar_activacion('agregar_token', token, nombre, days, referencia, origen, False, 'Token ya existe')
-            return jsonify({'error': 'Token ya existe'}), 400
-        
         if not token_config.get('token_password'):
             log_api_request('/api/token', data, 'No master password')
             registrar_activacion('agregar_token', token, nombre, days, referencia, origen, False, 'Sin contraseña maestra')
             return jsonify({'error': 'No hay contraseña maestra configurada'}), 400
+
+        # LLAMADA A LA FUNCIÓN MAESTRA (Solo para la creación técnica)
+        # Pasamos display_name para que guarde el nombre visual en el JSON
+        success, msg, expires = ejecutar_creacion_usuario(
+            token, 
+            token_config['token_password'], 
+            days, 
+            user_type="token", 
+            display_name=nombre
+        )
         
-        # Calcular expiración a las 6pm
-        if days >= 0:
-            expire_date = (datetime.now().date() + timedelta(days=days))
-            expires = datetime.combine(expire_date, datetime.min.time()).replace(
-                hour=18, minute=0, second=0
-            ).isoformat()
-        else:
-            expires = None
-        
-        users[token] = {
-            "password": token_config['token_password'],
-            "role": "user",
-            "type": "token",
-            "display_name": nombre,
-            "created": datetime.now().isoformat(),
-            "expires": expires,
-            "max_connections": 1,
-            "enabled": True,
-            "original_token": token
-        }
-        
-        new_token = {token: users[token]}
-        if save_users(new_token, full_database=users):
-            # ✅ REGISTRAR ACTIVACIÓN EXITOSA
+        if success:
+            # ✅ TU REGISTRO DE ACTIVACIÓN (Tal cual lo tenías)
             registrar_activacion('agregar_token', token, nombre, days, referencia, origen, True)
             
             result = {
@@ -215,188 +186,149 @@ def api_agregar_token():
             log_api_request('/api/token', data, 'OK')
             return jsonify(result), 200
         else:
-            registrar_activacion('agregar_token', token, nombre, days, referencia, origen, False, 'Error guardando usuario')
-            log_api_request('/api/token', data, 'Save failed')
-            return jsonify({'error': 'Error guardando usuario'}), 500
+            # ✅ REGISTRO DE FALLO SI LA FUNCIÓN MAESTRA DIJO QUE NO
+            registrar_activacion('agregar_token', token, nombre, days, referencia, origen, False, msg)
+            log_api_request('/api/token', data, f'Failed: {msg}')
+            return jsonify({'error': msg}), 500
         
     except Exception as e:
+        # ✅ REGISTRO DE ERROR CRÍTICO
         registrar_activacion('agregar_token', token if 'token' in locals() else 'unknown', 
                            nombre if 'nombre' in locals() else 'unknown', 
                            days if 'days' in locals() else 0, 
                            referencia if 'referencia' in locals() else '', 
-                           origen if 'origen' in locals() else 'manual', 
+                           origen if 'origen' in locals() else 'api', 
                            False, str(e))
         log_api_request('/api/token', data, f'Error: {e}')
         return jsonify({'error': str(e)}), 500
-
+    
+# MEJORADO
 @app.route('/api/renovar', methods=['POST'])
 @require_auth
 def api_renovar():
-    """Renovar usuario - Usa lógica de edit_user opción 1"""
+    """Renovar usuario - Registra la activación y usa lógica centralizada"""
     try:
-        from datetime import timedelta
-        
         data = request.get_json()
         username = data.get('user')
         days = data.get('dias', 0)
         referencia = data.get('referencia', '')
-        origen = data.get('origen', 'manual')
-        
+        origen = data.get('origen', 'api') 
+
         if not username:
             log_api_request('/api/renovar', data, 'Missing user')
-            registrar_activacion('renovar', username, '', days, referencia, origen, False, 'Usuario no especificado')
+            # Registramos el fallo por falta de usuario
+            registrar_activacion('renovar', 'unknown', 'unknown', days, referencia, origen, False, 'Usuario no especificado')
             return jsonify({'error': 'user requerido'}), 400
-        
-        users = load_users()
-        
-        if username not in users:
-            log_api_request('/api/renovar', data, 'User not found')
-            registrar_activacion('renovar', username, '', days, referencia, origen, False, 'Usuario no encontrado')
-            return jsonify({'error': 'Usuario no encontrado'}), 404
-        
-        user_data = users[username]
-        nombre_display = user_data.get('display_name', username)
-        
-        # Lógica de renovación
-        if user_data.get('expires'):
-            current_expire = datetime.fromisoformat(user_data['expires'])
-            if datetime.now() > current_expire:
-                expire_date = (datetime.now().date() + timedelta(days=days))
-                new_expire = datetime.combine(expire_date, datetime.min.time()).replace(
-                    hour=18, minute=0, second=0
-                )
-            else:
-                new_expire = current_expire + timedelta(days=days)
-        else:
-            expire_date = (datetime.now().date() + timedelta(days=days))
-            new_expire = datetime.combine(expire_date, datetime.min.time()).replace(
-                hour=18, minute=0, second=0
-            )
-        
-        users[username]['expires'] = new_expire.isoformat()
-        
-        updated_user = {username: users[username]}
-        if save_users(updated_user, full_database=users):
-            # ✅ REGISTRAR ACTIVACIÓN EXITOSA
-            registrar_activacion('renovar', username, nombre_display, days, referencia, origen, True)
+
+        # LLAMADA A LA LÓGICA ÚNICA (users.py)
+        success, message, new_date = ejecutar_renovacion_dias(username, days, referencia, origen)
+
+        if success:
+            # ✅ REGISTRO DE ACTIVACIÓN EXITOSA (Fundamental para tus ventas)
+            registrar_activacion('renovar', username, username, days, referencia, origen, True)
             
-            new_days = (new_expire - datetime.now()).days
+            total_days = (new_date - datetime.now()).days
             result = {
                 'success': True,
                 'user': username,
                 'dias_sumados': days,
-                'dias_totales': new_days,
-                'expira': new_expire.isoformat()
+                'dias_totales': total_days,
+                'expira': new_date.isoformat()
             }
             log_api_request('/api/renovar', data, 'OK')
             return jsonify(result), 200
         else:
-            registrar_activacion('renovar', username, nombre_display, days, referencia, origen, False, 'Error guardando cambios')
-            log_api_request('/api/renovar', data, 'Save failed')
-            return jsonify({'error': 'Error guardando cambios'}), 500
-        
+            # ✅ REGISTRO DE FALLO (ej: usuario no existe)
+            registrar_activacion('renovar', username, username, days, referencia, origen, False, message)
+            log_api_request('/api/renovar', data, f'Failed: {message}')
+            return jsonify({'error': message}), 404
+
     except Exception as e:
-        registrar_activacion('renovar', username if 'username' in locals() else 'unknown',
-                           nombre_display if 'nombre_display' in locals() else '',
-                           days if 'days' in locals() else 0,
-                           referencia if 'referencia' in locals() else '',
-                           origen if 'origen' in locals() else 'manual',
+        # ✅ REGISTRO DE ERROR CRÍTICO DEL SISTEMA
+        registrar_activacion('renovar', 
+                           username if 'username' in locals() else 'unknown', 
+                           username if 'username' in locals() else 'unknown', 
+                           days if 'days' in locals() else 0, 
+                           referencia if 'referencia' in locals() else '', 
+                           origen if 'origen' in locals() else 'api', 
                            False, str(e))
         log_api_request('/api/renovar', data, f'Error: {e}')
         return jsonify({'error': str(e)}), 500
     
-#estos no usara automatico
+# MEJORADO
 @app.route('/api/reiniciar', methods=['POST'])
 @require_auth
 def api_reiniciar():
-    """Reiniciar días - Usa lógica de edit_user opción 2"""
+    """Reiniciar días de un usuario y registrar la operación"""
     try:
-        from datetime import timedelta
-        
         data = request.get_json()
         username = data.get('user')
         days = data.get('dias', 0)
+        referencia = data.get('referencia', 'RESET')
+        origen = data.get('origen', 'api')
         
         if not username:
-            log_api_request('/api/reiniciar', data, 'Missing user')
+            registrar_activacion('reiniciar', 'unknown', 'unknown', days, referencia, origen, False, 'Usuario requerido')
             return jsonify({'error': 'user requerido'}), 400
         
-        users = load_users()
+        # LLAMADA A LA FUNCIÓN MAESTRA
+        success, message, new_date = ejecutar_reinicio_dias(username, days)
         
-        if username not in users:
-            log_api_request('/api/reiniciar', data, 'User not found')
-            return jsonify({'error': 'Usuario no encontrado'}), 404
-        
-        # Lógica igual que edit_user opción 2
-        if days >= 0:
-            expire_date = (datetime.now().date() + timedelta(days=days))
-            new_expire = datetime.combine(expire_date, datetime.min.time()).replace(
-                hour=18, minute=0, second=0
-            )
-            users[username]['expires'] = new_expire.isoformat()
-        else:
-            users[username]['expires'] = None
-        
-        updated_user = {username: users[username]}
-        if save_users(updated_user, full_database=users):
-            result = {
-                'success': True,
-                'user': username,
-                'dias_nuevos': days,
-                'expira': new_expire.isoformat() if days >= 0 else None
-            }
-            log_api_request('/api/reiniciar', data, 'OK')
-            return jsonify(result), 200
-        else:
-            log_api_request('/api/reiniciar', data, 'Save failed')
-            return jsonify({'error': 'Error guardando cambios'}), 500
-        
-    except Exception as e:
-        log_api_request('/api/reiniciar', data, f'Error: {e}')
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/borrar', methods=['POST'])
-@require_auth
-def api_borrar():
-    """Eliminar usuario - Usa lógica de delete_specific_user"""
-    try:
-        import subprocess
-        
-        data = request.get_json()
-        username = data.get('user')
-        
-        if not username:
-            log_api_request('/api/borrar', data, 'Missing user')
-            return jsonify({'error': 'user requerido'}), 400
-        
-        users = load_users()
-        
-        if username not in users:
-            log_api_request('/api/borrar', data, 'User not found')
-            return jsonify({'error': 'Usuario no encontrado'}), 404
-        
-        del users[username]
-        # Aquí pasamos diccionario vacío porque ya lo eliminamos
-        if save_users({}, full_database=users):
-            # Desconectar usuario (igual que delete_specific_user)
-            subprocess.run(['pkill', '-u', username], stderr=subprocess.DEVNULL)
+        if success:
+            # ✅ AHORA SÍ SE REGISTRA
+            registrar_activacion('reiniciar', username, username, days, referencia, origen, True)
             
             result = {
                 'success': True,
                 'user': username,
-                'action': 'deleted',
-                'disconnected': True
+                'dias_nuevos': days,
+                'expira': new_date.isoformat() if new_date else None
             }
-            log_api_request('/api/borrar', data, 'OK')
+            log_api_request('/api/reiniciar', data, 'OK')
             return jsonify(result), 200
         else:
-            log_api_request('/api/borrar', data, 'Save failed')
-            return jsonify({'error': 'Error guardando cambios'}), 500
+            registrar_activacion('reiniciar', username, username, days, referencia, origen, False, message)
+            return jsonify({'error': message}), 404
+            
+    except Exception as e:
+        log_api_request('/api/reiniciar', data, f'Error: {e}')
+        return jsonify({'error': str(e)}), 500
+    
+# MEJORADO
+@app.route('/api/borrar', methods=['POST'])
+@require_auth
+def api_borrar():
+    """Eliminar usuario y registrar quién realizó la purga"""
+    try:
+        data = request.get_json()
+        username = data.get('user')
+        origen = data.get('origen', 'api')
         
+        if not username:
+            return jsonify({'error': 'user requerido'}), 400
+        
+        # LLAMADA A LA FUNCIÓN ÚNICA
+        success, message = ejecutar_borrado_fisico(username)
+
+        if success:
+            # ✅ REGISTRO DE BORRADO
+            registrar_activacion('borrar', username, username, 0, 'SISTEMA', origen, True)
+            
+            result = {
+                'success': True,
+                'user': username,
+                'action': 'deleted'
+            }
+            log_api_request('/api/borrar', data, f'OK - {message}')
+            return jsonify(result), 200
+        else:
+            registrar_activacion('borrar', username, username, 0, 'FALLO', origen, False, message)
+            return jsonify({'error': message}), 404
+           
     except Exception as e:
         log_api_request('/api/borrar', data, f'Error: {e}')
         return jsonify({'error': str(e)}), 500
-
+    
 #trae las activaciones
 @app.route('/api/sync-activaciones', methods=['GET'])
 @require_auth
