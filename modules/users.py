@@ -2,9 +2,7 @@
 """
 Módulo USUARIOS  - Gestión de USUARIOS
 """
-import time
-import re
-import subprocess
+import re, subprocess, time, os
 import json
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -1819,7 +1817,7 @@ def stop_api_general_server():
 
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     menu_api_general()
-    
+
 def view_api_general_logs():
     """Ver logs del API General"""
     clear_screen()
@@ -1850,36 +1848,60 @@ def view_api_general_logs():
 #limpiado correcto
 
 def find_screen_sessions(name):
-    """
-    Devuelve lista de nombres completos de sesiones screen que terminen en '.<name>'
-    Ej: ['1234.moratech_api']
-    """
     try:
         out = subprocess.run(['screen', '-ls'], capture_output=True, text=True).stdout
     except Exception:
         return []
-
     sessions = []
-    # cada línea puede ser: "\t1234.moratech_api\t(Detached)"
     for line in out.splitlines():
         m = re.search(r'(\d+\.' + re.escape(name) + r')\b', line)
         if m:
             sessions.append(m.group(1))
     return sessions
 
-def stop_screen_sessions(name):
-    """
-    Cierra cada sesión encontrada para el nombre indicado.
-    Devuelve (stopped_count, detalles_lista)
-    """
-    sessions = find_screen_sessions(name)
+def stop_screen_sessions(name, timeout=2):
     details = []
     stopped = 0
+    sessions = find_screen_sessions(name)
     for s in sessions:
-        try:
-            subprocess.run(['screen', '-S', s, '-X', 'quit'], capture_output=True, text=True)
-            details.append(f"quit {s}")
+        pid = s.split('.')[0]
+        details.append(f"trying quit {s}")
+        subprocess.run(['screen', '-S', s, '-X', 'quit'], capture_output=True)
+        time.sleep(0.3)
+        remaining = find_screen_sessions(name)
+        if s not in remaining:
+            details.append(f"quit ok {s}")
             stopped += 1
-        except Exception as e:
-            details.append(f"error {s}: {e}")
+            continue
+        # intentar matar por PID
+        try:
+            pid_int = int(pid)
+        except:
+            pid_int = None
+        if pid_int and subprocess.run(['ps', '-p', str(pid_int)], capture_output=True).returncode == 0:
+            details.append(f"pid {pid_int} exists - kill")
+            subprocess.run(['kill', str(pid_int)])
+            time.sleep(timeout)
+            if subprocess.run(['ps', '-p', str(pid_int)], capture_output=True).returncode == 0:
+                subprocess.run(['kill', '-9', str(pid_int)])
+                time.sleep(0.2)
+        # re-check
+        if s not in find_screen_sessions(name):
+            details.append(f"stopped {s}")
+            stopped += 1
+            continue
+        # intentar eliminar socket stale
+        sock_path = f"/run/screen/S-root/{s}"
+        if (not pid_int) or subprocess.run(['ps', '-p', str(pid_int)], capture_output=True).returncode != 0:
+            if os.path.exists(sock_path):
+                try:
+                    os.remove(sock_path)
+                    details.append(f"removed stale socket {sock_path}")
+                    stopped += 1
+                except Exception as e:
+                    details.append(f"error removing socket {sock_path}: {e}")
+            else:
+                details.append(f"socket {sock_path} not found")
+        else:
+            details.append(f"session {s} still present and pid {pid_int} exists - manual inspect")
     return stopped, details
