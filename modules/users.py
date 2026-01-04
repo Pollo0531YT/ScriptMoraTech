@@ -968,22 +968,26 @@ def restore_online_chumo():
                 print_banner()
                 total = len(users)
                 print(f"\n {Color.YELLOW}🚀 Iniciando restauración masiva...{Color.END}")
-                print(f" {Color.CYAN}Procesando {total} usuarios, por favor espera...{Color.END}\n")
+                
+                # 1. Cargamos la base de datos actual completa
+                db_completa = load_users() 
+                
+                # 2. Fusionamos TODOS los usuarios del backup en la db_completa
+                for username, data in users.items():
+                    db_completa[username] = data
 
-                # Restaurar uno a uno para mostrar el progreso "bonito"
-                exitos = 0
-                for i, (username, data) in enumerate(users.items(), 1):
-                    # Creamos un diccionario temporal con un solo usuario para save_users
-                    single_user = {username: data}
-                    # Mostramos el mensaje ANTES de procesar
-                    dias_display = max(0, int((datetime.fromisoformat(data['expires']) - datetime.now()).days))
-                    print(f"\r {Color.YELLOW}Restaurando: {Color.GREEN}{username}{Color.END} [{dias_display} días] ({i}/{total})...{' ' * 10}", end="", flush=True)
-
-                    # Guardamos silenciando la salida de usermod
-                    if save_users(single_user):
-                        exitos += 1
-                print(f"\n\n {Color.GREEN}✓ Proceso finalizado: {exitos} usuarios restaurados.{Color.END}")
-                moratech.log_action("admin", f"Restauración online completada: {exitos} usuarios")
+                # 3. Llamamos a save_users una SOLA VEZ pasando:
+                #    - users_to_sync: Los usuarios nuevos (para que useradd los cree)
+                #    - full_database: La base completa fusionada (para que no borre nada)
+                print(f" {Color.CYAN}Procesando comandos de sistema...{Color.END}")
+                
+                if save_users(users, full_database=db_completa):
+                    print(f"\n\n {Color.GREEN}✓ Proceso finalizado exitosamente.{Color.END}")
+                    print(f" {Color.CYAN}Se han restaurado {total} usuarios en Linux y JSON.{Color.END}")
+                    moratech.log_action("admin", f"Restauración masiva exitosa: {total} usuarios")
+                else:
+                    print(f"\n\n {Color.RED}❌ Error al ejecutar comandos de sistema.{Color.END}")
+                    
             else:
                 print(f"\n {Color.YELLOW}Restauración cancelada{Color.END}")
         else:
