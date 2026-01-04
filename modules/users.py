@@ -527,11 +527,12 @@ def mostrar_users_registrados():
 
             # --- CÁLCULO DE STATUS ---
             if expires:
-                expire_date = datetime.fromisoformat(expires)
-                if datetime.now() > expire_date:
+                expire_date = datetime.fromisoformat(expires).replace(tzinfo=CR_TZ)  
+                now_cr = datetime.now(CR_TZ)
+                if now_cr > expire_date:
                     status = f"{Color.RED}EXPIRADO{Color.END}"
                 else:
-                    days = (expire_date - datetime.now()).days
+                    days = (expire_date - now_cr).days
                     status = f"{Color.GREEN}{days} días{Color.END}"
             else:
                 status = f"{Color.CYAN}ILIMITADO{Color.END}"
@@ -565,8 +566,8 @@ def info_exacta_usuario():
         # --- Cálculo de Tiempos ---
         expires = data.get('expires')
         if expires:
-            expire_dt = datetime.fromisoformat(expires)
-            now = datetime.now()
+            expire_dt = datetime.fromisoformat(expires).replace(tzinfo=CR_TZ)
+            now = datetime.now(CR_TZ)
             if now > expire_dt:
                 dias_restantes = f"{Color.RED}EXPIRADO{Color.END}"
                 estado_visual = f"{Color.RED}● INACTIVO / CADUCADO{Color.END}"
@@ -910,12 +911,13 @@ def backup_online_chumo():
         backup_dir = CONFIG_DIR / 'backups'
         backup_dir.mkdir(exist_ok=True)
         
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        timestamp = datetime.now(CR_TZ).strftime('%Y%m%d_%H%M%S')  # ← AGREGADO CR_TZ
         backup_filename = f'backup_{timestamp}.txt'
         backup_path = backup_dir / backup_filename
         
         # Leer usuarios actuales
         users = load_users()
+        now_cr = datetime.now(CR_TZ)  # ← AGREGADO
         
         # Convertir a formato texto
         backup_lines = []
@@ -924,28 +926,26 @@ def backup_online_chumo():
             password = data.get('password', '')
             max_conn = data.get('max_connections', 1)
             
+            # Calcular días restantes
+            expires = data.get('expires')
+            if expires:
+                expire_date = datetime.fromisoformat(expires).replace(tzinfo=CR_TZ)  # ← AGREGADO
+                
+                # Días restantes desde AHORA hasta la expiración
+                diff = (expire_date - now_cr).days  # ← CAMBIADO
+                
+                # IMPORTANTE: Sumar +1 para compatibilidad con script de chumo
+                # El restore resta 1, así que guardamos con +1
+                days = max(0, diff + 1)  # ← CAMBIADO
+            else:
+                days = 0
+            
             if user_type == 'token':
                 # Formato TOKEN: {token}:{contraseña_token}:TOKEN:{dias}:{nombre_visual}
                 display_name = data.get('display_name', username)
-                
-                # Calcular días restantes
-                expires = data.get('expires')
-                if expires:
-                    expire_date = datetime.fromisoformat(expires)
-                    days = max(0, (expire_date - datetime.now()).days + 1)
-                else:
-                    days = 0
-                
                 line = f"{username}:{password}:TOKEN:{days}:{display_name}"
             else:
                 # Formato SSH: {nombre}:{contraseña}:{max_conexiones}:{dias}
-                expires = data.get('expires')
-                if expires:
-                    expire_date = datetime.fromisoformat(expires)
-                    days = max(0, (expire_date - datetime.now()).days + 1)
-                else:
-                    days = 0
-                
                 line = f"{username}:{password}:{max_conn}:{days}"
             
             backup_lines.append(line)
@@ -958,7 +958,6 @@ def backup_online_chumo():
         print(f" {Color.CYAN}Total usuarios: {len(users)}{Color.END}")
         
         # Obtener IP del servidor
-        import subprocess
         try:
             ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
@@ -1012,7 +1011,7 @@ def backup_online_chumo():
         traceback.print_exc()
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
+    
 #RESTARACION COMPLETA BORRON Y CUENTA NUEVA"
 def restore_online_chumo():
     """Restaurar usuarios desde servidor HTTP - BORRÓN Y CUENTA NUEVA"""
