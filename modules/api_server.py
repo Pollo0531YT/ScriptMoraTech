@@ -183,18 +183,18 @@ def api_agregar_token():
 def api_renovar():
     try:
         data = request.get_json()
-        nombre = data.get('nombre', username)
-        username = data.get('user')
-        days = data.get('dias', 0)
+        nombre = data.get('nombre')
+        token = data.get('token')
+        dias = data.get('dias', 0)
         referencia = data.get('referencia', '')
         origen = data.get('origen', 'api')
         
-        if not username:
-            return jsonify({'error': 'user requerido'}), 400
+        if not token:
+            return jsonify({'error': 'token requerido'}), 400
         
         success, msg, new_date = sincronizar_usuario(
-            username=username,
-            dias=days,
+            username=token,
+            dias=dias,
             operacion='renovar'
         )
         
@@ -203,17 +203,17 @@ def api_renovar():
             diff = new_date - now_cr
             total_days = diff.days if diff.days >= 0 else 0
             
-            registrar_activacion('renovar', username, nombre, days, referencia, origen, True)
+            registrar_activacion('renovar', token, nombre, dias, referencia, origen, True)
             
             return jsonify({
                 'success': True,
-                'user': username,
-                'dias_sumados': days,
+                'user': token,
+                'dias_sumados': dias,
                 'dias_totales': total_days,
                 'expira': new_date.isoformat()
             }), 200
         else:
-            registrar_activacion('renovar', username, username, days, referencia, origen, False, msg)
+            registrar_activacion('renovar', token, nombre, dias, referencia, origen, False, msg)
             return jsonify({'error': msg}), 404
     
     except Exception as e:

@@ -192,7 +192,7 @@ def api_gestionar_token():
                 payload = {'nombre': nombre, 'token': token, 'dias': dias, 'referencia': referencia, 'origen': origen_solicitud}
             else:
                 endpoint = f"{v.get('url_api')}/api/renovar"
-                payload = {'nombre': nombre, 'user': token, 'dias': dias, 'referencia': referencia, 'origen': origen_solicitud}
+                payload = {'nombre': nombre, 'token': token, 'dias': dias, 'referencia': referencia, 'origen': origen_solicitud}
 
             resp = requests.post(endpoint, headers=headers, json=payload, timeout=10)
             
