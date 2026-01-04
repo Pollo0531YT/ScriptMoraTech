@@ -92,24 +92,24 @@ def agregar_usuario():
         add_token_user()
 
 def add_ssh_user():
-    """Agregar usuario SSH desde el menú - Llama a la función maestra"""
+    """Agregar usuario SSH desde el menú"""
     print(f"\n{Color.CYAN}--- NUEVO USUARIO SSH ---{Color.END}\n")
     username = input(f"{Color.GREEN}Nombre de usuario: {Color.END}").strip()
     password = input(f"{Color.GREEN}Contraseña: {Color.END}").strip()
-    days_input = input(f"{Color.GREEN}Días de duración (0 = hoy 6pm): {Color.END}").strip()
+    days = input(f"{Color.GREEN}Días de duración: {Color.END}").strip()
     max_conn = input(f"{Color.GREEN}Máximas conexiones: {Color.END}").strip()
-
-    # Llamada a la función maestra
-    success, msg, expires = ejecutar_creacion_usuario(
-        username=username, 
-        password=password, 
-        dias=days_input, 
-        user_type="ssh", 
+    
+    success, msg, expires = sincronizar_usuario(
+        username=username,
+        password=password,
+        dias=days,
+        operacion='crear',
+        user_type='ssh',
         max_conn=max_conn
     )
-
+    
     if success:
-        print(f"\n{Color.GREEN}✓ {msg} (Expira: {expires}){Color.END}")
+        print(f"\n{Color.GREEN}✓ {msg} (Expira: {expires.strftime('%Y-%m-%d %H:%M')}){Color.END}")
         moratech.log_action("admin", f"Usuario SSH creado: {username}")
     else:
         print(f"\n{Color.RED}✗ {msg}{Color.END}")
@@ -117,119 +117,35 @@ def add_ssh_user():
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
 def add_token_user():
-    """Agregar usuario Token desde el menú - Llama a la función maestra"""
+    """Agregar usuario Token desde el menú"""
     token_config = load_token_config()
     print(f"\n{Color.CYAN}--- NUEVO USUARIO TOKEN ---{Color.END}\n")
-
+    
     if not token_config.get('token_password'):
         token_pass = input(f"{Color.GREEN}Contraseña maestra para tokens: {Color.END}").strip()
         token_config['token_password'] = token_pass
         save_token_config(token_config)
-
+    
     display_name = input(f"{Color.GREEN}Nombre del usuario: {Color.END}").strip()
-    token_input = input(f"{Color.GREEN}Token de acceso: {Color.END}").strip()
-    days_input = input(f"{Color.GREEN}Días de duración (0 = hoy 6pm): {Color.END}").strip()
-
-    # Llamada a la función maestra
-    success, msg, expires = ejecutar_creacion_usuario(
-        username=token_input, 
-        password=token_config['token_password'], 
-        dias=days_input, 
-        user_type="token", 
+    token = input(f"{Color.GREEN}Token de acceso: {Color.END}").strip()
+    days = input(f"{Color.GREEN}Días de duración: {Color.END}").strip()
+    
+    success, msg, expires = sincronizar_usuario(
+        username=token,
+        password=token_config['token_password'],
+        dias=days,
+        operacion='crear',
+        user_type='token',
         display_name=display_name
     )
-
+    
     if success:
         print(f"\n{Color.GREEN}✓ {msg}{Color.END}")
-        moratech.log_action("admin", f"Token creado: {display_name} ({token_input})")
+        moratech.log_action("admin", f"Token creado: {display_name} ({token})")
     else:
         print(f"\n{Color.RED}✗ {msg}{Color.END}")
-
+    
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-
-def ejecutar_creacion_usuario(username, password, dias, user_type="ssh", max_conn=1, display_name=None):
-    """Crea el usuario en memoria y llama a save_users para sincronizar Linux"""
-    users = load_users()
-    if not username or username in users:
-        return False, "Usuario ya existe o nombre inválido", None
-
-    try:
-        days_int = int(dias)
-        now = datetime.now(CR_TZ)
-        # Expiración: Hoy + X días a las 18:00:00
-        expire_date = (now.date() + timedelta(days=days_int))
-        expires_dt = datetime.combine(expire_date, time(18, 0, 0)).replace(tzinfo=CR_TZ)
-        expires_iso = expires_dt.isoformat()
-
-        new_user_data = {
-            "password": str(password),
-            "role": "user",
-            "type": user_type,
-            "created": now.isoformat(),
-            "expires": expires_iso,
-            "max_connections": int(max_conn),
-            "enabled": True
-        }
-        if user_type == "token" and display_name:
-            new_user_data["display_name"] = display_name
-
-        # save_users se encarga de useradd, chpasswd y usermod -e
-        if save_users({username: new_user_data}, full_database=users):
-            return True, "Sincronizado con éxito", expires_dt
-    except Exception as e:
-        return False, f"Error: {str(e)}", None
-
-def ejecutar_renovacion_dias(username, days, referencia='', origen='manual'):
-    users = load_users()
-    if username not in users:
-        return False, "Usuario no encontrado", None
-
-    try:
-        user_data = users[username]
-        # SIEMPRE obtenemos la hora actual en Costa Rica
-        now = datetime.now(CR_TZ)
-        
-        if user_data.get('expires'):
-            # Convertimos lo guardado a objeto datetime con zona horaria
-            current_expire = datetime.fromisoformat(user_data['expires']).replace(tzinfo=CR_TZ)
-            # Si ya venció, sumamos desde hoy. Si no, desde su vencimiento actual.
-            base_date = current_expire if current_expire > now else now
-        else:
-            base_date = now
-
-        # Calculamos nueva fecha: +X días a las 6:00 PM
-        new_expire_dt = datetime.combine((base_date + timedelta(days=days)).date(), time(18, 0, 0)).replace(tzinfo=CR_TZ)
-        
-        users[username]['expires'] = new_expire_dt.isoformat()
-        users[username]['enabled'] = True
-        
-        # save_users se encarga de aplicar el +1 para Linux internamente
-        if save_users({username: users[username]}, full_database=users):
-            return True, "Renovación exitosa", new_expire_dt
-        
-        return False, "Error al guardar cambios", None
-    except Exception as e:
-        return False, f"Error: {str(e)}", None
-
-def ejecutar_reinicio_dias(username, days):
-    users = load_users()
-    if username not in users:
-        return False, "Usuario no encontrado", None
-
-    try:
-        now = datetime.now(CR_TZ)
-        # Reiniciar: Hoy + X días a las 6:00 PM
-        new_date = (now.date() + timedelta(days=days))
-        new_expire_dt = datetime.combine(new_date, time(18, 0, 0)).replace(tzinfo=CR_TZ)
-        
-        users[username]['expires'] = new_expire_dt.isoformat()
-        users[username]['enabled'] = True
-        
-        if save_users({username: users[username]}, full_database=users):
-            return True, "Reinicio exitoso", new_expire_dt
-        return False, "Error al guardar", None
-    except Exception as e:
-        return False, f"Error: {str(e)}", None
     
 def editar_usuario():
     clear_screen()
@@ -272,24 +188,45 @@ def editar_usuario():
     print(f" [1] Sumar días | [2] Reiniciar días | [3] Cambiar Clave")
     opc = input(f" {Color.YELLOW}Opción: {Color.END}")
 
-    if opc == '1':
+    if opc == '1':  # Sumar días
         d = input(" Cantidad de días a sumar: ")
         if d.isdigit():
-            res, msg, date = ejecutar_renovacion_dias(target, int(d))
-            print(f" {Color.GREEN if res else Color.RED} {msg} -> {date.strftime('%Y-%m-%d') if date else ''}{Color.END}")
-    
-    elif opc == '2':
+            success, msg, new_date = sincronizar_usuario(
+                username=target,
+                dias=int(d),
+                operacion='renovar'
+            )
+            if success:
+                print(f" {Color.GREEN}✓ {msg} -> {new_date.strftime('%Y-%m-%d')}{Color.END}")
+            else:
+                print(f" {Color.RED}✗ {msg}{Color.END}")
+
+    elif opc == '2':  # Reiniciar días
         d = input(" Nuevos días totales (desde hoy): ")
         if d.isdigit():
-            res, msg, date = ejecutar_reinicio_dias(target, int(d))
-            print(f" {Color.GREEN if res else Color.RED} {msg} -> {date.strftime('%Y-%m-%d') if date else ''}{Color.END}")
+            success, msg, new_date = sincronizar_usuario(
+                username=target,
+                dias=int(d),
+                operacion='reiniciar'
+            )
+            if success:
+                print(f" {Color.GREEN}✓ {msg} -> {new_date.strftime('%Y-%m-%d')}{Color.END}")
+            else:
+                print(f" {Color.RED}✗ {msg}{Color.END}")
 
-    elif opc == '3':
+    elif opc == '3':  # Cambiar contraseña
         new_p = input(" Nueva contraseña: ").strip()
         if new_p:
-            users[target]['password'] = new_p
-            if save_users({target: users[target]}, full_database=users):
-                print(f" {Color.GREEN}Contraseña actualizada en Linux y JSON.{Color.END}")
+            success, msg, _ = sincronizar_usuario(
+                username=target,
+                password=new_p,
+                dias=0,  # Mantiene días actuales
+                operacion='renovar'
+            )
+            if success:
+                print(f" {Color.GREEN}✓ Contraseña actualizada{Color.END}")
+            else:
+                print(f" {Color.RED}✗ {msg}{Color.END}")
     
     input(f"\n{Color.CYAN}Presiona Enter para volver...{Color.END}")
 
@@ -670,9 +607,9 @@ def info_exacta_usuario():
         
     input(f"\n{Color.CYAN}Presiona Enter para volver al menú...{Color.END}")
 
-#RE-INICIAR CONTRASEÑA DE TOKEN
+#RE-INICIAR CONTRASEÑA DE TOKEN #MEJORADA
 def reset_token_password():
-    """Resetear contraseña de tokens"""
+    """Resetear contraseña de tokens con progreso visual"""
     clear_screen()
     print_banner()
     print_line()
@@ -681,23 +618,65 @@ def reset_token_password():
     
     new_pass = input(f"\n {Color.GREEN}Nueva contraseña para tokens: {Color.END}").strip()
     
+    if not new_pass:
+        print(f" {Color.RED}✗ Contraseña vacía{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    # Guardar nueva contraseña maestra
     token_config = load_token_config()
     token_config['token_password'] = new_pass
     save_token_config(token_config)
     
-    # Actualizar todos los usuarios token existentes
+    # Buscar todos los usuarios token
     users = load_users()
-    for username, data in users.items():
-        if data.get('type') == 'token':
-            users[username]['password'] = token_config['token_password']
-    save_users(users)
+    tokens = [u for u, d in users.items() if d.get('type') == 'token']
     
-    print(f"\n {Color.GREEN}✓ Contraseña de tokens actualizada{Color.END}")
-    print(f" {Color.YELLOW}Todos los usuarios token ahora usan: {new_pass}{Color.END}")
-    moratech.log_action("admin", "Contraseña de tokens reseteada")
+    if not tokens:
+        print(f"\n {Color.YELLOW}No hay usuarios token para actualizar{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    total = len(tokens)
+    print(f"\n {Color.CYAN}Actualizando {total} token(s)...{Color.END}\n")
+    
+    actualizados = 0
+    for i, username in enumerate(tokens, 1):
+        print(f"\r {Color.YELLOW}Actualizando: {Color.WHITE}{username[:20]:<20}{Color.END} ({i}/{total})", end="", flush=True)
+        
+        # Actualizar contraseña en JSON y Linux
+        users[username]['password'] = new_pass
+        
+        # Usar chpasswd para actualizar en Linux
+        subprocess.run(
+            ['chpasswd'],
+            input=f"{username}:{new_pass}\n",
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        
+        actualizados += 1
+    
+    # Guardar JSON actualizado
+    import tempfile
+    import shutil
+    temp_fd, temp_path = tempfile.mkstemp(dir=str(CONFIG_DIR), text=True)
+    try:
+        with os.fdopen(temp_fd, 'w') as f:
+            json.dump(users, f, indent=4)
+        shutil.move(temp_path, str(USERS_FILE))
+    except:
+        try:
+            os.unlink(temp_path)
+        except:
+            pass
+    
+    print(f"\n\n {Color.GREEN}✓ Contraseña actualizada en {actualizados}/{total} tokens{Color.END}")
+    print(f" {Color.YELLOW}Nueva contraseña: {new_pass}{Color.END}")
+    moratech.log_action("admin", f"Contraseña de tokens reseteada ({actualizados} usuarios)")
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
 
 def load_users():
     """Carga usuarios"""
@@ -714,49 +693,156 @@ def save_token_config(config):
     with open(TOKEN_CONFIG_FILE, 'w') as f:
         json.dump(config, f, indent=4)
 
-def save_users(users_to_sync, full_database=None):
-    """Versión con margen de seguridad para evitar bloqueo SSH prematuro"""
-    import tempfile
-    import os
-    import shutil
-
-    db_to_save = full_database if full_database is not None else users_to_sync
-
+def sincronizar_usuario(username, password=None, dias=None, operacion='crear', user_type='ssh', max_conn=1, display_name=None):
+    """
+    FUNCIÓN MAESTRA UNIFICADA - Maneja crear/renovar/reiniciar usuarios
+    
+    Args:
+        username: Nombre de usuario o token
+        password: Contraseña (solo para crear/modificar)
+        dias: Días de duración
+        operacion: 'crear', 'renovar', 'reiniciar'
+        user_type: 'ssh' o 'token'
+        max_conn: Máximas conexiones (solo SSH)
+        display_name: Nombre visible (solo tokens)
+    
+    Returns:
+        tuple: (success: bool, message: str, expires_datetime: datetime)
+    """
     try:
-        for username, data in users_to_sync.items():
-            # 1. Crear si no existe
-            if subprocess.run(['id', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
-                subprocess.run(['useradd', '-M', '-s', '/bin/false', username], 
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-            # 2. Actualizar Contraseña
-            password = str(data.get('password', ''))
-            subprocess.run(['chpasswd'], input=f"{username}:{password}\n", text=True,
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            
-            # Esto evita el error "Account expired" porque Linux vence al inicio del día.
-            expires = data.get('expires')
-            if expires:
-                expire_dt = datetime.fromisoformat(expires)
-                # Le damos +1 días de gracia a Linux
-                linux_margin = (expire_dt + timedelta(days=1)).strftime('%Y-%m-%d')
-                subprocess.run(['usermod', '-e', linux_margin, '-U', '-s', '/bin/false', username], 
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        users = load_users()
+        now = datetime.now(CR_TZ)
+        
+        # ==================== VALIDACIONES ====================
+        if not username or username.strip() == '':
+            return False, "Nombre de usuario vacío", None
+        
+        if operacion == 'crear' and username in users:
+            return False, "Usuario ya existe", None
+        
+        if operacion in ['renovar', 'reiniciar'] and username not in users:
+            return False, "Usuario no encontrado", None
+        
+        # Convertir días a int
+        try:
+            dias_int = int(dias) if dias is not None else 0
+        except:
+            return False, "Días inválidos", None
+        
+        # ==================== CALCULAR FECHA DE EXPIRACIÓN ====================
+        if operacion == 'crear':
+            # CREAR: Hoy + X días a las 6pm
+            expire_date = (now.date() + timedelta(days=dias_int))
+            expires_dt = datetime.combine(expire_date, time(18, 0, 0)).replace(tzinfo=CR_TZ)
+        
+        elif operacion == 'renovar':
+            # RENOVAR: Sumar días a la fecha actual o desde hoy si ya expiró
+            user_data = users[username]
+            if user_data.get('expires'):
+                current_expire = datetime.fromisoformat(user_data['expires']).replace(tzinfo=CR_TZ)
+                base_date = current_expire if current_expire > now else now
             else:
-                # Si no tiene fecha, le quitamos la expiración en Linux
-                subprocess.run(['usermod', '-e', '', '-U', username], 
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-        # 4. Guardado atómico del JSON
+                base_date = now
+            
+            expire_date = (base_date + timedelta(days=dias_int)).date()
+            expires_dt = datetime.combine(expire_date, time(18, 0, 0)).replace(tzinfo=CR_TZ)
+        
+        elif operacion == 'reiniciar':
+            # REINICIAR: Desde hoy + X días a las 6pm
+            expire_date = (now.date() + timedelta(days=dias_int))
+            expires_dt = datetime.combine(expire_date, time(18, 0, 0)).replace(tzinfo=CR_TZ)
+        
+        expires_iso = expires_dt.isoformat()
+        
+        # ==================== PREPARAR DATOS DEL USUARIO ====================
+        if operacion == 'crear':
+            # Usuario nuevo
+            user_data = {
+                "password": str(password),
+                "role": "user",
+                "type": user_type,
+                "created": now.isoformat(),
+                "expires": expires_iso,
+                "max_connections": int(max_conn),
+                "enabled": True
+            }
+            
+            if user_type == "token" and display_name:
+                user_data["display_name"] = display_name
+                user_data["original_token"] = username
+            
+            users[username] = user_data
+        
+        else:
+            # Renovar o Reiniciar (solo actualizar fecha y activar)
+            users[username]['expires'] = expires_iso
+            users[username]['enabled'] = True
+            
+            # Si se pasa contraseña nueva, actualizarla
+            if password:
+                users[username]['password'] = str(password)
+        
+        # ==================== SINCRONIZAR A LINUX ====================
+        # 1. Crear usuario en Linux si no existe
+        check_user = subprocess.run(
+            ['id', username],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        
+        if check_user.returncode != 0:
+            # Usuario no existe en Linux, crearlo
+            subprocess.run(
+                ['useradd', '-M', '-s', '/bin/false', username],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        
+        # 2. Actualizar contraseña
+        current_password = users[username]['password']
+        subprocess.run(
+            ['chpasswd'],
+            input=f"{username}:{current_password}\n",
+            text=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        
+        # 3. Configurar expiración en Linux (+1 día de margen)
+        linux_expire_date = (expires_dt + timedelta(days=1)).strftime('%Y-%m-%d')
+        subprocess.run(
+            ['usermod', '-e', linux_expire_date, '-U', '-s', '/bin/false', username],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+        
+        # ==================== GUARDAR JSON ====================
+        import tempfile
+        import shutil
+        
         temp_fd, temp_path = tempfile.mkstemp(dir=str(CONFIG_DIR), text=True)
-        with os.fdopen(temp_fd, 'w') as f:
-            json.dump(db_to_save, f, indent=4)
-        shutil.move(temp_path, str(USERS_FILE))
-        return True
-    except Exception:
-        return False
-      
-
+        try:
+            with os.fdopen(temp_fd, 'w') as f:
+                json.dump(users, f, indent=4)
+            shutil.move(temp_path, str(USERS_FILE))
+        except Exception as e:
+            try:
+                os.unlink(temp_path)
+            except:
+                pass
+            return False, f"Error guardando JSON: {str(e)}", None
+        
+        # ==================== RETORNO EXITOSO ====================
+        mensaje = {
+            'crear': 'Usuario creado correctamente',
+            'renovar': 'Usuario renovado correctamente',
+            'reiniciar': 'Días reiniciados correctamente'
+        }
+        
+        return True, mensaje[operacion], expires_dt
+    
+    except Exception as e:
+        return False, f"Error: {str(e)}", None
 
 def menu_backup():
     """Menú de backup de usuarios"""
@@ -927,166 +1013,269 @@ def backup_online_chumo():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
+#RESTARACION COMPLETA BORRON Y CUENTA NUEVA"
 def restore_online_chumo():
-    """Restaurar usuarios desde servidor HTTP con progreso visual profesional"""
+    """Restaurar usuarios desde servidor HTTP - BORRÓN Y CUENTA NUEVA"""
     clear_screen()
     print_banner()
+    print_line()
     print(f" {Color.CYAN}RESTAURAR USUARIOS EN LÍNEA{Color.END}")
-    print("-" * 45)
+    print_line()
     
-    # Mostrar última URL para facilitar la vida al usuario
+    # Mostrar última URL
     try:
         url_file = CONFIG_DIR / 'last_backup_url.txt'
         if url_file.exists():
             with open(url_file, 'r') as f:
                 last_url = f.read().strip()
-                print(f" {Color.YELLOW}Último backup detectado:{Color.END}")
-                print(f" {Color.GRAY}{last_url}{Color.END}\n")
-    except: pass
+                print(f"\n {Color.YELLOW}Último backup:{Color.END}")
+                print(f" {Color.GRAY}{last_url}{Color.END}")
+    except:
+        pass
     
-    backup_url = input(f" {Color.GREEN}Enlace del backup: {Color.END}").strip()
-    if not backup_url: return
-
-    print(f"\n {Color.YELLOW}⏳ Descargando base de datos...{Color.END}", end="\r")
+    backup_url = input(f"\n {Color.GREEN}Enlace del backup: {Color.END}").strip()
+    
+    if not backup_url:
+        print(f" {Color.YELLOW}Operación cancelada{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    # ⚠️ ADVERTENCIA DE BORRADO
+    print(f"\n {Color.RED}⚠️  ADVERTENCIA ⚠️{Color.END}")
+    print(f" {Color.YELLOW}Esto eliminará TODOS los usuarios actuales{Color.END}")
+    print(f" {Color.YELLOW}y los reemplazará con el backup{Color.END}")
+    confirm = input(f"\n {Color.RED}Escribe 'CONFIRMAR' para proceder: {Color.END}").strip()
+    
+    if confirm != "CONFIRMAR":
+        print(f" {Color.YELLOW}Operación cancelada{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    print(f"\n {Color.YELLOW}⏳ Descargando backup...{Color.END}", end="\r")
     
     try:
-        import requests # Si no tienes requests, usa subprocess con curl
+        import requests
         response = requests.get(backup_url, timeout=10)
+        
         if response.status_code != 200:
-            print(f" {Color.RED}✗ No se pudo descargar el archivo (Error {response.status_code}){Color.END}")
+            print(f" {Color.RED}✗ Error descargando (HTTP {response.status_code}){Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
         
         backup_content = response.text.strip()
         if not backup_content:
-            print(f" {Color.RED}✗ El archivo de backup está vacío.{Color.END}")
+            print(f" {Color.RED}✗ Backup vacío{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
-
-        # Cargamos DB actual para fusionar
-        db_completa = load_users()
-        lineas = backup_content.split('\n')
-        total = len(lineas)
-        exitos = 0
-
-        print(f" {Color.GREEN}✓ Descarga exitosa. Procesando {total} usuarios...{Color.END}\n")
-
-        for i, line in enumerate(lineas, 1):
-            parts = line.split(':')
-            if not parts or len(parts) < 4: continue
-            
-            # Identificar formato y parsear
-            username = parts[0]
-            if 'TOKEN' in line:
-                # Formato TOKEN: {token}:{pass}:TOKEN:{dias}:{nombre}
-                password, days, display_name = parts[1], int(parts[3]), parts[4]
-                tipo = "token"
-            else:
-                # Formato SSH: {nombre}:{pass}:{conn}:{dias}
-                password, max_conn, days = parts[1], int(parts[2]), int(parts[3])
-                tipo = "ssh"
-                display_name = username
-
-            # Calcular expiración
-            real_days = max(0, days - 1)
-            expire_date = (datetime.now().date() + timedelta(days=real_days))
-            expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0).isoformat()
-
-            # Estructura para el JSON
-            user_data = {
-                "password": password,
-                "role": "user",
-                "type": tipo,
-                "display_name": display_name,
-                "created": datetime.now().isoformat(),
-                "expires": expires,
-                "max_connections": int(parts[2]) if tipo == "ssh" else 1,
-                "enabled": True
-            }
-
-            # EFECTO VISUAL: Actualiza la misma línea
-            print(f"\r {Color.YELLOW}Restaurando: {Color.WHITE}{username[:12]:<12}{Color.END} [{days:2}d] ({i}/{total})", end="", flush=True)
-
-            # SINCRONIZAR CON EL SISTEMA (Linux)
-            # Llamamos a save_users pero solo para el usuario actual para que lo cree en Linux
-            if save_users({username: user_data}, full_database=db_completa):
-                db_completa[username] = user_data # Guardamos en nuestra copia local
-                exitos += 1
-            
-        # Guardado final de la base de datos completa
-        save_users({}, full_database=db_completa)
         
-        print(f"\n\n {Color.GREEN}✓ Restauración finalizada. {exitos}/{total} usuarios en línea.{Color.END}")
-        moratech.log_action("admin", f"Restauración Online: {exitos} usuarios")
-
+        # ==================== PASO 1: BORRAR TODOS LOS USUARIOS ====================
+        print(f" {Color.GREEN}✓ Descarga exitosa{Color.END}")
+        print(f"\n {Color.RED}Eliminando usuarios actuales...{Color.END}\n")
+        
+        users_actuales = load_users()
+        a_borrar = [u for u in users_actuales.keys() if u != "admin"]
+        
+        for i, username in enumerate(a_borrar, 1):
+            print(f"\r {Color.RED}Eliminando: {Color.WHITE}{username[:20]:<20}{Color.END} ({i}/{len(a_borrar)})", end="", flush=True)
+            ejecutar_borrado_fisico(username)
+        
+        if a_borrar:
+            print(f"\n {Color.GREEN}✓ {len(a_borrar)} usuario(s) eliminado(s){Color.END}\n")
+        
+        # ==================== PASO 2: RESTAURAR DESDE BACKUP ====================
+        lineas = backup_content.split('\n')
+        total = len([l for l in lineas if l.strip()])
+        exitos = 0
+        
+        print(f" {Color.CYAN}Restaurando {total} usuario(s)...{Color.END}\n")
+        
+        token_config = load_token_config()
+        if not token_config.get('token_password'):
+            token_config['token_password'] = 'default123'
+            save_token_config(token_config)
+        
+        for i, line in enumerate(lineas, 1):
+            line = line.strip()
+            if not line:
+                continue
+            
+            parts = line.split(':')
+            if len(parts) < 4:
+                continue
+            
+            username = parts[0]
+            
+            # Parsear según tipo
+            if 'TOKEN' in line and len(parts) >= 5:
+                # TOKEN: {token}:{pass}:TOKEN:{dias}:{nombre}
+                password = token_config['token_password']
+                days = int(parts[3])
+                display_name = parts[4]
+                user_type = 'token'
+                max_conn = 1
+            else:
+                # SSH: {nombre}:{pass}:{conn}:{dias}
+                password = parts[1]
+                max_conn = int(parts[2])
+                days = int(parts[3])
+                display_name = None
+                user_type = 'ssh'
+            
+            # Visual
+            print(f"\r {Color.YELLOW}Restaurando: {Color.WHITE}{username[:20]:<20}{Color.END} [{days:2}d] ({i}/{total})", end="", flush=True)
+            
+            # Sincronizar usando la función maestra
+            success, msg, expires = sincronizar_usuario(
+                username=username,
+                password=password,
+                dias=days,
+                operacion='crear',
+                user_type=user_type,
+                max_conn=max_conn,
+                display_name=display_name
+            )
+            
+            if success:
+                exitos += 1
+        
+        print(f"\n\n {Color.GREEN}✓ Restauración completada: {exitos}/{total} usuarios{Color.END}")
+        moratech.log_action("admin", f"Restore Online: {exitos} usuarios (BORRÓN Y CUENTA NUEVA)")
+        
+        # Guardar URL para próxima vez
+        try:
+            with open(url_file, 'w') as f:
+                f.write(backup_url)
+        except:
+            pass
+    
     except Exception as e:
-        print(f"\n {Color.RED}✗ Error crítico: {e}{Color.END}")
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
+#RESTARACION COMPLETA BORRON Y CUENTA NUEVA"
 def restore_local_chumo():
-    """Restaurar desde backup local .txt con progreso visual"""
+    """Restaurar desde backup local - BORRÓN Y CUENTA NUEVA"""
     clear_screen()
     print_banner()
-    print(f" {Color.CYAN}RESTAURAR BACKUP LOCAL (.TXT){Color.END}\n")
+    print_line()
+    print(f" {Color.CYAN}RESTAURAR BACKUP LOCAL (.TXT){Color.END}")
+    print_line()
     
     backup_dir = CONFIG_DIR / 'backups'
     backups = sorted(backup_dir.glob('backup_*.txt'), reverse=True)
-
+    
     if not backups:
-        print(f" {Color.RED}No se encontraron archivos de backup.{Color.END}")
-        input("\nEnter para volver..."); return
-
+        print(f"\n {Color.RED}No se encontraron backups locales{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    print(f"\n {Color.CYAN}Backups disponibles:{Color.END}\n")
     for i, b in enumerate(backups[:10], 1):
-        with open(b, 'r') as f: count = sum(1 for l in f if l.strip())
-        print(f" {Color.GREEN}[{i}]{Color.END} {b.name} {Color.GRAY}({count} users){Color.END}")
-
-    opc = input(f"\n {Color.YELLOW}Selecciona un archivo (0 para cancelar): {Color.END}")
-    if not opc or opc == '0': return
-
+        with open(b, 'r') as f:
+            count = sum(1 for l in f if l.strip())
+        print(f" {Color.GREEN}[{i}]{Color.END} {b.name} {Color.GRAY}({count} usuarios){Color.END}")
+    
+    print(f"\n {Color.GREEN}[0]{Color.END} Cancelar")
+    opc = input(f"\n {Color.YELLOW}Selecciona: {Color.END}").strip()
+    
+    if not opc or opc == '0':
+        return
+    
     try:
-        seleccionado = backups[int(opc)-1]
-        with open(seleccionado, 'r') as f: lineas = f.readlines()
+        seleccionado = backups[int(opc) - 1]
+    except:
+        print(f" {Color.RED}✗ Opción inválida{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    # ⚠️ ADVERTENCIA
+    print(f"\n {Color.RED}⚠️  ADVERTENCIA ⚠️{Color.END}")
+    print(f" {Color.YELLOW}Esto eliminará TODOS los usuarios actuales{Color.END}")
+    print(f" {Color.YELLOW}Backup: {seleccionado.name}{Color.END}")
+    confirm = input(f"\n {Color.RED}Escribe 'CONFIRMAR' para proceder: {Color.END}").strip()
+    
+    if confirm != "CONFIRMAR":
+        print(f" {Color.YELLOW}Operación cancelada{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    try:
+        # ==================== PASO 1: BORRAR USUARIOS ACTUALES ====================
+        print(f"\n {Color.RED}Eliminando usuarios actuales...{Color.END}\n")
         
-        db_completa = load_users()
-        total = len(lineas)
+        users_actuales = load_users()
+        a_borrar = [u for u in users_actuales.keys() if u != "admin"]
+        
+        for i, username in enumerate(a_borrar, 1):
+            print(f"\r {Color.RED}Eliminando: {Color.WHITE}{username[:20]:<20}{Color.END} ({i}/{len(a_borrar)})", end="", flush=True)
+            ejecutar_borrado_fisico(username)
+        
+        if a_borrar:
+            print(f"\n {Color.GREEN}✓ {len(a_borrar)} usuario(s) eliminado(s){Color.END}\n")
+        
+        # ==================== PASO 2: RESTAURAR BACKUP ====================
+        with open(seleccionado, 'r') as f:
+            lineas = f.readlines()
+        
+        total = len([l for l in lineas if l.strip()])
         exitos = 0
-
-        print(f"\n {Color.YELLOW}🚀 Restaurando {total} usuarios...{Color.END}")
-
+        
+        print(f" {Color.CYAN}Restaurando {total} usuario(s)...{Color.END}\n")
+        
+        token_config = load_token_config()
+        if not token_config.get('token_password'):
+            token_config['token_password'] = 'default123'
+            save_token_config(token_config)
+        
         for i, line in enumerate(lineas, 1):
             line = line.strip()
-            if not line: continue
+            if not line:
+                continue
+            
             parts = line.split(':')
+            if len(parts) < 4:
+                continue
+            
             username = parts[0]
             
-            # --- Lógica de parseo (Igual a la online) ---
-            if 'TOKEN' in line:
+            # Parsear
+            if 'TOKEN' in line and len(parts) >= 5:
+                password = token_config['token_password']
                 days = int(parts[3])
-                user_data = {
-                    "password": parts[1], "role": "user", "type": "token",
-                    "display_name": parts[4], "expires": (datetime.now() + timedelta(days=days)).isoformat(),
-                    "max_connections": 1, "enabled": True
-                }
+                display_name = parts[4]
+                user_type = 'token'
+                max_conn = 1
             else:
+                password = parts[1]
+                max_conn = int(parts[2])
                 days = int(parts[3])
-                user_data = {
-                    "password": parts[1], "role": "user", "type": "ssh",
-                    "expires": (datetime.now() + timedelta(days=days)).isoformat(),
-                    "max_connections": int(parts[2]), "enabled": True
-                }
-
-            # Visual y Sincronización
-            print(f"\r {Color.YELLOW}Cargando: {Color.WHITE}{username[:12]:<12}{Color.END} ({i}/{total})", end="", flush=True)
+                display_name = None
+                user_type = 'ssh'
             
-            if save_users({username: user_data}, full_database=db_completa):
-                db_completa[username] = user_data
+            # Visual
+            print(f"\r {Color.YELLOW}Restaurando: {Color.WHITE}{username[:20]:<20}{Color.END} [{days:2}d] ({i}/{total})", end="", flush=True)
+            
+            # Sincronizar
+            success, msg, expires = sincronizar_usuario(
+                username=username,
+                password=password,
+                dias=days,
+                operacion='crear',
+                user_type=user_type,
+                max_conn=max_conn,
+                display_name=display_name
+            )
+            
+            if success:
                 exitos += 1
-
-        save_users({}, full_database=db_completa)
-        print(f"\n\n {Color.GREEN}✓ {exitos} Usuarios restaurados localmente.{Color.END}")
-
+        
+        print(f"\n\n {Color.GREEN}✓ Restauración completada: {exitos}/{total} usuarios{Color.END}")
+        moratech.log_action("admin", f"Restore Local: {exitos} usuarios ({seleccionado.name})")
+    
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
-
+    
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 def list_backups_chumo():

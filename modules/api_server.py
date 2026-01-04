@@ -12,7 +12,7 @@ from pathlib import Path
 from functools import wraps
 
 from activaciones import registrar_activacion, obtener_activaciones, obtener_estadisticas
-from users import ejecutar_borrado_fisico, ejecutar_creacion_usuario, ejecutar_reinicio_dias, ejecutar_renovacion_dias
+from users import ejecutar_borrado_fisico, sincronizar_usuario
 
 CR_TZ = timezone(timedelta(hours=-6))  # Zona horaria Costa Rica -06:00
 
@@ -101,7 +101,6 @@ def api_status():
 @app.route('/api/agregar', methods=['POST'])
 @require_auth
 def api_agregar_ssh():
-    """Agregar usuario SSH - Usa lógica centralizada con registro de activaciones"""
     try:
         data = request.get_json()
         username = data.get('user')
@@ -110,107 +109,81 @@ def api_agregar_ssh():
         max_conn = data.get('limite', 1)
         referencia = data.get('referencia', '')
         origen = data.get('origen', 'api')
-
+        
         if not username or not password:
-            log_api_request('/api/agregar', data, 'Missing parameters')
             registrar_activacion('agregar_ssh', username, username, days, referencia, origen, False, 'Faltan datos')
             return jsonify({'error': 'user y password requeridos'}), 400
-
-        # LLAMADA A LA FUNCIÓN MAESTRA (Creación técnica en Linux y JSON)
-        success, msg, expires = ejecutar_creacion_usuario(
-            username, 
-            password, 
-            days, 
-            user_type="ssh", 
+        
+        success, msg, expires = sincronizar_usuario(
+            username=username,
+            password=password,
+            dias=days,
+            operacion='crear',
+            user_type='ssh',
             max_conn=max_conn
         )
         
         if success:
-            # ✅ REGISTRO DE ACTIVACIÓN EXITOSA
             registrar_activacion('agregar_ssh', username, username, days, referencia, origen, True)
-            
-            result = {
-                'success': True, 
-                'user': username, 
+            return jsonify({
+                'success': True,
+                'user': username,
                 'dias': days,
-                'expira': expires
-            }
-            log_api_request('/api/agregar', data, 'OK')
-            return jsonify(result), 200
+                'expira': expires.isoformat()
+            }), 200
         else:
-            # ✅ REGISTRO DE FALLO (ej: usuario ya existe)
             registrar_activacion('agregar_ssh', username, username, days, referencia, origen, False, msg)
-            log_api_request('/api/agregar', data, f'Failed: {msg}')
             return jsonify({'error': msg}), 400
-
+    
     except Exception as e:
-        log_api_request('/api/agregar', data, f'Error: {e}')
         return jsonify({'error': str(e)}), 500
-
+    
 #MEJORADO
 @app.route('/api/token', methods=['POST'])
 @require_auth
 def api_agregar_token():
-    """Agregar usuario TOKEN - Usa lógica centralizada pero mantiene sus logs"""
     try:
         data = request.get_json()
         nombre = data.get('nombre')
         token = data.get('token')
         days = data.get('dias', 0)
-        referencia = data.get('referencia', '')  
-        origen = data.get('origen', 'api') # Marcamos que viene de la API
+        referencia = data.get('referencia', '')
+        origen = data.get('origen', 'api')
         
         if not nombre or not token:
-            log_api_request('/api/token', data, 'Missing parameters')
             registrar_activacion('agregar_token', token, nombre, days, referencia, origen, False, 'Parámetros faltantes')
             return jsonify({'error': 'nombre y token requeridos'}), 400
         
         token_config = load_token_config()
         if not token_config.get('token_password'):
-            log_api_request('/api/token', data, 'No master password')
             registrar_activacion('agregar_token', token, nombre, days, referencia, origen, False, 'Sin contraseña maestra')
-            return jsonify({'error': 'No hay contraseña maestra configurada'}), 400
-
-        # LLAMADA A LA FUNCIÓN MAESTRA (Solo para la creación técnica)
-        # Pasamos display_name para que guarde el nombre visual en el JSON
-        success, msg, expires = ejecutar_creacion_usuario(
-            token, 
-            token_config['token_password'], 
-            days, 
-            user_type="token", 
+            return jsonify({'error': 'No hay contraseña maestra'}), 400
+        
+        success, msg, expires = sincronizar_usuario(
+            username=token,
+            password=token_config['token_password'],
+            dias=days,
+            operacion='crear',
+            user_type='token',
             display_name=nombre
         )
         
         if success:
-            # ✅ TU REGISTRO DE ACTIVACIÓN (Tal cual lo tenías)
             registrar_activacion('agregar_token', token, nombre, days, referencia, origen, True)
-            
-            result = {
+            return jsonify({
                 'success': True,
                 'nombre': nombre,
                 'token': token,
                 'dias': days,
-                'expira': expires
-            }
-            log_api_request('/api/token', data, 'OK')
-            return jsonify(result), 200
+                'expira': expires.isoformat()
+            }), 200
         else:
-            # ✅ REGISTRO DE FALLO SI LA FUNCIÓN MAESTRA DIJO QUE NO
             registrar_activacion('agregar_token', token, nombre, days, referencia, origen, False, msg)
-            log_api_request('/api/token', data, f'Failed: {msg}')
             return jsonify({'error': msg}), 500
-        
-    except Exception as e:
-        # ✅ REGISTRO DE ERROR CRÍTICO
-        registrar_activacion('agregar_token', token if 'token' in locals() else 'unknown', 
-                           nombre if 'nombre' in locals() else 'unknown', 
-                           days if 'days' in locals() else 0, 
-                           referencia if 'referencia' in locals() else '', 
-                           origen if 'origen' in locals() else 'api', 
-                           False, str(e))
-        log_api_request('/api/token', data, f'Error: {e}')
-        return jsonify({'error': str(e)}), 500
     
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+       
 # MEJORADO
 @app.route('/api/renovar', methods=['POST'])
 @require_auth
@@ -218,51 +191,57 @@ def api_renovar():
     try:
         data = request.get_json()
         username = data.get('user')
-        days = int(data.get('dias', 0))
+        days = data.get('dias', 0)
         referencia = data.get('referencia', '')
-        origen = data.get('origen', 'api') 
-
+        origen = data.get('origen', 'api')
+        
         if not username:
             return jsonify({'error': 'user requerido'}), 400
-
-        # Llamada a la lógica centralizada
-        success, message, new_date = ejecutar_renovacion_dias(username, days)
-
+        
+        success, msg, new_date = sincronizar_usuario(
+            username=username,
+            dias=days,
+            operacion='renovar'
+        )
+        
         if success:
-            # --- CORRECCIÓN DE CÁLCULO DE DÍAS RESTANTES ---
             now_cr = datetime.now(CR_TZ)
-            # Calculamos la diferencia real entre la nueva fecha y "ahora" en CR
             diff = new_date - now_cr
             total_days = diff.days if diff.days >= 0 else 0
-
+            
             registrar_activacion('renovar', username, username, days, referencia, origen, True)
             
             return jsonify({
                 'success': True,
                 'user': username,
                 'dias_sumados': days,
-                'dias_totales': total_days, # Días reales restantes en CR
+                'dias_totales': total_days,
                 'expira': new_date.isoformat()
             }), 200
         else:
-            registrar_activacion('renovar', username, username, days, referencia, origen, False, message)
-            return jsonify({'error': message}), 404
-
+            registrar_activacion('renovar', username, username, days, referencia, origen, False, msg)
+            return jsonify({'error': msg}), 404
+    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+# MEJORADO
 @app.route('/api/reiniciar', methods=['POST'])
 @require_auth
 def api_reiniciar():
     try:
         data = request.get_json()
         username = data.get('user')
-        days = int(data.get('dias', 0))
+        days = data.get('dias', 0)
         
         if not username:
             return jsonify({'error': 'user requerido'}), 400
         
-        success, message, new_date = ejecutar_reinicio_dias(username, days)
+        success, msg, new_date = sincronizar_usuario(
+            username=username,
+            dias=days,
+            operacion='reiniciar'
+        )
         
         if success:
             registrar_activacion('reiniciar', username, username, days, 'RESET', 'api', True)
@@ -273,11 +252,11 @@ def api_reiniciar():
                 'expira': new_date.isoformat()
             }), 200
         else:
-            return jsonify({'error': message}), 404
-            
+            return jsonify({'error': msg}), 404
+    
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-       
+         
 # MEJORADO
 @app.route('/api/borrar', methods=['POST'])
 @require_auth
