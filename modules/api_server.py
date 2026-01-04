@@ -11,27 +11,24 @@ from flask import Flask, request, jsonify, render_template, session, redirect
 from pathlib import Path
 from functools import wraps
 
-from activaciones import registrar_activacion, obtener_activaciones, obtener_estadisticas
-from users import ejecutar_borrado_fisico, sincronizar_usuario
-
-CR_TZ = timezone(timedelta(hours=-6))  # Zona horaria Costa Rica -06:00
-
-# Agregar path de módulos
+# Agregar path de módulos PRIMERO
 sys.path.insert(0, '/usr/local/lib/moratech')
 
-template_dir = os.path.join(os.path.dirname(__file__), 'templates')
-
-# Importar funciones de users
-from users import (
-    load_users, 
-    save_users, 
-    load_token_config, 
+# Ahora sí importar
+from modules.activaciones import registrar_activacion, obtener_activaciones, obtener_estadisticas
+from modules.users import (
+    ejecutar_borrado_fisico, 
+    sincronizar_usuario,
+    load_users,
+    load_token_config
 )
 
-app = Flask(__name__, template_folder=template_dir)
+# 3. Configuración
+CR_TZ = timezone(timedelta(hours=-6))
+template_dir = os.path.join(os.path.dirname(__file__), 'templates')
 
+app = Flask(__name__, template_folder=template_dir)
 app.secret_key = 'moratech-key'
-# Clave secreta fija
 SECRET_KEY = "moratech-key"
 
 CONFIG_DIR = Path.home() / '.moratech'
