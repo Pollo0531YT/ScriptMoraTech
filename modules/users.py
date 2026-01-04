@@ -281,6 +281,13 @@ def ejecutar_borrado_fisico(username):
         if username == "admin":
             return False, "No se puede eliminar al administrador"
         
+        # 0.1 KILL DEL USUARIO
+        subprocess.run(
+            ['pkill', '-9', '-u', username],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
         # 1. BORRADO DE LINUX
         # userdel con -f (fuerza) y -r (borra home) automáticamente mata procesos
         # No hace falta pkill por separado
@@ -1011,7 +1018,7 @@ def backup_online_chumo():
         traceback.print_exc()
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-    
+
 #RESTARACION COMPLETA BORRON Y CUENTA NUEVA"
 def restore_online_chumo():
     """Restaurar usuarios desde servidor HTTP - BORRÓN Y CUENTA NUEVA"""
