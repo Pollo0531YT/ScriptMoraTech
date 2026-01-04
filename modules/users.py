@@ -409,55 +409,81 @@ def borrar_iterativo():
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 def borrar_expirados():
-    """Opción 3: Limpieza automática de caducados"""
+    """Limpieza automática de caducados con estética profesional"""
     clear_screen()
     print_banner()
-    users = load_users()
-    now = datetime.now()
+    print(f" {Color.CYAN}--- PURGA DE USUARIOS CADUCADOS ---{Color.END}\n")
     
-    # Buscamos quiénes ya pasaron su fecha
-    vencidos = [u for u, d in users.items() if d.get('expires') and now > datetime.fromisoformat(d['expires'])]
+    users = load_users()
+    now = datetime.now(CR_TZ) # Usamos tu zona horaria de Costa Rica
+    
+    vencidos = [u for u, d in users.items() if u != 'admin' and d.get('expires') and now > datetime.fromisoformat(d['expires']).replace(tzinfo=CR_TZ)]
 
     if not vencidos:
-        print(f" {Color.GREEN}✨ El sistema está limpio. No hay usuarios caducados.{Color.END}")
+        print(f" {Color.GREEN}✨ Sistema limpio. No se encontraron usuarios caducados.{Color.END}")
     else:
-        print(f" {Color.YELLOW}Se encontraron {len(vencidos)} usuarios expirados.{Color.END}")
-        print(f" {Color.CYAN}Iniciando purga masiva...{Color.END}\n")
-        
-        for username in vencidos:
-            print(f" {Color.GRAY}>> Purgando {username}...{Color.END}", end="\r")
-            ejecutar_borrado_fisico(username, users) # Llama a la maestra
-            print(f" {Color.RED}✗ {username} eliminado.{Color.END}           ")
-            time.sleep(0.1) # Efecto visual de progreso
-        
-        save_users(users) # Actualiza el JSON de una vez
-        print(f"\n {Color.GREEN}✓ Limpieza de expirados completada con éxito.{Color.END}")
-        
+        total = len(vencidos)
+        print(f" {Color.YELLOW}Se detectaron {total} usuarios expirados.{Color.END}")
+        confirm = input(f" {Color.CYAN}¿Proceder con la limpieza? (s/n): {Color.END}").lower()
+        if confirm != 's': return
+
+        print() # Espacio para la barra
+        for i, username in enumerate(vencidos, 1):
+            # Barra de progreso visual [===>    ]
+            percent = (i / total) * 100
+            bar = "█" * int(i / total * 20) + "-" * (20 - int(i / total * 20))
+            
+            # Efecto visual en la misma línea
+            print(f"\r {Color.RED}Purgando: {Color.WHITE}{username[:12]:<12}{Color.END} |{bar}| {percent:.0f}%", end="", flush=True)
+            
+            # Ejecución técnica
+            ejecutar_borrado_fisico(username, users)
+            time.sleep(0.05) # Pequeña pausa para que el ojo humano vea el progreso
+
+        # Guardado final atómico del JSON
+        save_users({}, full_database=users)
+        print(f"\n\n {Color.GREEN}✓ Limpieza completada. {total} usuarios removidos.{Color.END}")
+        moratech.log_action("admin", f"Purga automática: {total} expirados")
+
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 def borrar_todos():
-    """Opción 4: Reset total"""
-    print(f"\n {Color.RED}⚠️  ¡ATENCIÓN! ESTO ELIMINARÁ TODOS LOS USUARIOS DEL SISTEMA ⚠️{Color.END}")
+    """Reset total del servidor con progreso dinámico"""
+    clear_screen()
+    print_banner()
+    print(f" {Color.RED}⚠️  ¡PELIGRO! ESTO ELIMINARÁ TODO EXCEPTO EL ADMIN ⚠️{Color.END}\n")
+    
     confirm = input(f" {Color.YELLOW}Escribe 'CONFIRMAR' para proceder: {Color.END}").strip()
     
     if confirm == "CONFIRMAR":
         users = load_users()
-        total = len(users) - (1 if "admin" in users else 0)
+        # Filtrar para no contar al admin
+        a_borrar = [u for u in users.keys() if u != "admin"]
+        total = len(a_borrar)
         
-        print(f"\n {Color.CYAN}Iniciando formateo de usuarios...{Color.END}")
-        for username in list(users.keys()):
-            if username != "admin":
-                print(f" {Color.RED}✗ Eliminando: {username}{Color.END}", end="\r")
+        if total == 0:
+            print(f"\n {Color.GREEN}El servidor ya está limpio.{Color.END}")
+        else:
+            print(f"\n {Color.CYAN}Iniciando formateo total...{Color.END}")
+            
+            for i, username in enumerate(a_borrar, 1):
+                # Efecto visual similar a tu restore_online
+                print(f"\r {Color.RED}Eliminando: {Color.WHITE}{username[:15]:<15}{Color.END} ({i}/{total})", end="", flush=True)
+                
+                # Borrado físico (Linux + procesos)
                 ejecutar_borrado_fisico(username, users)
-                print(f" {Color.RED}✗ {username} eliminado del servidor.{Color.END}")
+                time.sleep(0.05)
 
-        save_users(users) # En este punto users solo tiene a admin o está vacío
-        print(f"\n {Color.GREEN}✓ Servidor totalmente limpio.{Color.END}")
+            # Guardamos el JSON que ahora solo tiene al admin
+            save_users({}, full_database=users)
+            
+            print(f"\n\n {Color.GREEN}✓ SERVIDOR RESETEADO: {total} usuarios eliminados.{Color.END}")
+            moratech.log_action("admin", "RESET TOTAL de base de datos")
     else:
-        print(f" {Color.YELLOW}Operación cancelada.{Color.END}")
+        print(f"\n {Color.GRAY}Operación cancelada por el usuario.{Color.END}")
         
-    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-
+    input(f"\n {Color.CYAN}Presiona Enter para continuar...{Color.END}")
+    
 #ENCARGADO DE MOSTRAR USUARIOS REGISTRADOS O INFO EXACTA
 def mostrar_users_registrados():
     """Mostrar usuarios registrados con diseño jerárquico y contador final"""
