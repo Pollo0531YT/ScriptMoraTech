@@ -1087,27 +1087,32 @@ def restore_local_chumo():
                 clear_screen()
                 print_banner()
                 total = len(users)
-                print(f"\n {Color.YELLOW}🔄 Restaurando desde backup local...{Color.END}")
-                print(f" {Color.CYAN}Cargando usuarios en el sistema, espera...{Color.END}\n")
+                print(f"\n {Color.YELLOW}🚀 Iniciando restauración masiva...{Color.END}")
+                
+                # 1. CARGAR USUARIOS ACTUALES PRIMERO
+                # Suponiendo que tienes una función load_users()
+                current_users = load_users() 
                 
                 exitos = 0
                 for i, (username, data) in enumerate(users.items(), 1):
-                    # Diccionario de un solo usuario para procesar uno a uno
-                    single_user = {username: data}
+                    # 2. FUSIONAR EN LA VARIABLE TEMPORAL
+                    current_users[username] = data
                     
-                    # Cálculo de días para el mensaje visual
-                    exp_dt = datetime.fromisoformat(data['expires'])
-                    dias_restantes = max(0, (exp_dt.date() - datetime.now().date()).days)
+                    # Cálculo para el log visual
+                    expires_dt = datetime.fromisoformat(data['expires'])
+                    dias_display = max(0, (expires_dt - datetime.now()).days)
                     
-                    # Mensaje dinámico elegante
-                    # <15 ajusta el nombre a la izquierda, >2 ajusta los días a la derecha
-                    print(f"\r {Color.CYAN}Restaurando: {Color.GREEN}{username:<15}{Color.END} | {Color.YELLOW}{dias_restantes:>2} días{Color.END} | ({i}/{total}){' '*5}", end="", flush=True)
-                    
-                    if save_users(single_user):
-                        exitos += 1
-                
-                print(f"\n\n {Color.GREEN}✓ Restauración local finalizada: {exitos}/{total} exitosos.{Color.END}")
-                moratech.log_action("admin", f"Restauración local realizada: {selected_backup.name}")
+                    print(f"\r {Color.YELLOW}Preparando: {Color.GREEN}{username}{Color.END} [{dias_display} días] ({i}/{total})...", end="", flush=True)
+                    exitos += 1
+
+                # 3. GUARDAR TODO EL DICCIONARIO COMPLETO UNA SOLA VEZ
+                # Esto evita que el archivo se sobrescriba 100 veces borrando lo anterior
+                if save_users(current_users):
+                    print(f"\n\n {Color.GREEN}✓ Proceso finalizado: {exitos} usuarios restaurados exitosamente.{Color.END}")
+                    moratech.log_action("admin", f"Restauración online completada: {exitos} usuarios")
+                else:
+                    print(f"\n\n {Color.RED}✗ Error crítico al guardar la base de datos.{Color.END}")
+
             else:
                 print(f"\n {Color.YELLOW}Operación cancelada.{Color.END}")
         else:
