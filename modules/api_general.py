@@ -119,6 +119,17 @@ def api_vps_add():
     
     return jsonify({'success': True, 'vps': nueva_vps}), 200
 
+# ENDPOINT EXCLUSIVO PARA EL BOT (SIN LOGIN DE NAVEGADOR)
+@app.route('/api/bot-gestionar', methods=['POST'])
+def api_bot_gestionar():
+    # Verificación manual rápida de la Key
+    key = request.headers.get('X-Auth-Key')
+    if not key or key != SECRET_KEY:
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    # Si la key es correcta, llama a la función interna
+    return api_gestionar_token()
+
 # MEJORADO + full para recibir de todo lado
 @app.route('/api/gestionar-token', methods=['POST'])
 @require_auth
