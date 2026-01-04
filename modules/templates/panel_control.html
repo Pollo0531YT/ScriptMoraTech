@@ -369,6 +369,31 @@
         }
         
         function mostrarResultados(data) {
+            // Validar si hay error del servidor
+            if (data.error) {
+                document.getElementById('resultsContent').innerHTML = `
+                    <div class="result-item result-error">
+                        <span><strong>Error del servidor</strong></span>
+                        <span>✗ ${data.error}</span>
+                    </div>
+                `;
+                document.getElementById('results').style.display = 'block';
+                document.getElementById('results').scrollIntoView({behavior: 'smooth'});
+                return;
+            }
+            
+            // Validar si hay resultados
+            if (!data.resultados || data.resultados.length === 0) {
+                document.getElementById('resultsContent').innerHTML = `
+                    <div class="result-item" style="background: #f3f4f6;">
+                        <span>No hay resultados</span>
+                    </div>
+                `;
+                document.getElementById('results').style.display = 'block';
+                return;
+            }
+            
+            // Procesar resultados normalmente
             const html = data.resultados.map(r => {
                 let className = r.success ? 'result-success' : 'result-error';
                 let icon = r.success ? '✓' : '✗';
@@ -376,7 +401,6 @@
                     (r.accion ? `${r.accion.toUpperCase()}` : 'Exitoso') : 
                     (r.error || 'Error');
                 
-                // Si fue renovado o creado, agregar badge especial
                 if (r.accion === 'renovado') {
                     className = 'result-warning';
                     icon = '🔄';
@@ -396,11 +420,9 @@
             
             document.getElementById('resultsContent').innerHTML = html;
             document.getElementById('results').style.display = 'block';
-            
-            // Scroll a resultados
             document.getElementById('results').scrollIntoView({behavior: 'smooth'});
         }
-        
+
         // Cargar VPS al inicio
         loadVPS();
     </script>
