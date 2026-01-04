@@ -187,6 +187,7 @@ def api_agregar_token():
 def api_renovar():
     try:
         data = request.get_json()
+        nombre = data.get('nombre', username)
         username = data.get('user')
         days = data.get('dias', 0)
         referencia = data.get('referencia', '')
@@ -206,7 +207,7 @@ def api_renovar():
             diff = new_date - now_cr
             total_days = diff.days if diff.days >= 0 else 0
             
-            registrar_activacion('renovar', username, username, days, referencia, origen, True)
+            registrar_activacion('renovar', username, nombre, days, referencia, origen, True)
             
             return jsonify({
                 'success': True,

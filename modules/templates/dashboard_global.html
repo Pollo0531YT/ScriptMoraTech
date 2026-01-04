@@ -240,6 +240,13 @@
                 return;
             }
             
+            // Ordenar por ID descendente (más nuevo primero)
+            activaciones.sort((a, b) => {
+                const idA = a.id || 0;
+                const idB = b.id || 0;
+                return idB - idA;  // Descendente
+            });
+
             let html = '<table><thead><tr>';
             html += '<th>ID</th><th>VPS</th><th>Estado</th><th>Fecha/Hora</th>';
             html += '<th>Origen</th><th>Nombre</th><th>Token</th><th>Días</th><th>Referencia</th>';
