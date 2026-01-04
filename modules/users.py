@@ -3,6 +3,7 @@
 Módulo USUARIOS  - Gestión de USUARIOS
 """
 import time
+import re
 import subprocess
 import json
 from datetime import datetime, timedelta
@@ -272,7 +273,7 @@ def editar_usuario():
                 print(f"\r {Color.GREEN}✓ {msg}. Nueva fecha: {new_date.strftime('%d/%m/%Y %H:%M')}{Color.END}")
             else:
                 print(f"\n {Color.RED}✗ {msg}{Color.END}")
-                
+
     elif choice == '3':
         if user_data.get('type') == 'token':
             print(f" {Color.YELLOW}Los tokens usan la contraseña maestra (Opción 12).{Color.END}")
@@ -1489,127 +1490,138 @@ def menu_api_server():
         menu_api_server()
 
 def start_api_server():
-    """Iniciar servidor API"""
+    """Iniciar servidor API (mejorado: evita duplicados y usa screen con comprobación)."""
     clear_screen()
     print_banner()
     print_line()
     print(f" {Color.CYAN}INICIAR SERVIDOR API{Color.END}")
     print_line()
-    
-    # Verificar/Configurar nombre de VPS
+
+    # Verificar/Configurar nombre de VPS (igual que antes)
     vps_name_file = CONFIG_DIR / 'vps_name.txt'
-    
     if not vps_name_file.exists():
         print(f"\n {Color.YELLOW}═══════════════════════════════════════════════════{Color.END}")
         print(f" {Color.CYAN}CONFIGURACIÓN INICIAL{Color.END}")
         print(f" {Color.YELLOW}═══════════════════════════════════════════════════{Color.END}")
         vps_name = input(f"\n {Color.GREEN}Nombre de esta VPS (ej: Directo1, Directo2): {Color.END}").strip()
-        
         if not vps_name:
             print(f" {Color.RED}✗ Nombre requerido{Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
-        
         CONFIG_DIR.mkdir(exist_ok=True)
         with open(vps_name_file, 'w') as f:
             f.write(vps_name)
-        
         print(f" {Color.GREEN}✓ Nombre configurado: {vps_name}{Color.END}")
     else:
         with open(vps_name_file, 'r') as f:
             vps_name = f.read().strip()
         print(f"\n {Color.CYAN}Nombre de VPS: {Color.GREEN}{vps_name}{Color.END}")
-    
+
     port = input(f"\n {Color.GREEN}Puerto para API (default: 9000): {Color.END}").strip()
     if not port:
         port = "9000"
-    
+
+    # Evitar crear session duplicada
+    existing = find_screen_sessions('moratech_api')
+    if existing:
+        print(f"\n {Color.YELLOW}Ya existe una sesión de screen para 'moratech_api':{Color.END}")
+        for s in existing:
+            print(f"  - {s}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+
     print(f"\n {Color.YELLOW}Iniciando servidor API...{Color.END}")
-    
     try:
         import os
         api_script = os.path.join(os.path.dirname(__file__), 'api_server.py')
-        
         if not os.path.exists(api_script):
             print(f" {Color.RED}✗ Error: api_server.py no encontrado{Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
-        
-        check_flask = subprocess.run(['python3', '-c', 'import flask'], 
-                                    capture_output=True, text=True)
-        
+
+        check_flask = subprocess.run(['python3', '-c', 'import flask'], capture_output=True, text=True)
         if check_flask.returncode != 0:
             print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
-            subprocess.run(['apt-get', 'install', '-y', 'python3-flask'],
-                         capture_output=True, text=True)
+            subprocess.run(['apt-get', 'install', '-y', 'python3-flask'], capture_output=True, text=True)
             print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
         else:
             print(f" {Color.GREEN}✓ Flask disponible{Color.END}")
-        
-        subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
-        
-        import time
+
+        try:
+            subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
+        except Exception:
+            pass
+
+        # lanzar screen con nombre fijo
         subprocess.run([
             'screen', '-dmS', 'moratech_api',
             'python3', api_script, port
         ])
-        
         time.sleep(2)
-        
-        check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
-        if 'moratech_api' not in check.stdout:
-            print(f"\n {Color.RED}✗ El servidor no pudo iniciar{Color.END}")
+
+        # comprobar lanzamiento real
+        existing = find_screen_sessions('moratech_api')
+        if not existing:
+            print(f"\n {Color.RED}✗ El servidor no pudo iniciar (no se encontró screen){Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
-        
+
+        # guardar puerto
         port_file = CONFIG_DIR / 'api_port.txt'
         with open(port_file, 'w') as f:
             f.write(port)
-        
+
         try:
-            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
-                                     capture_output=True, text=True, timeout=3)
+            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip()
         except:
             server_ip = "TU_IP"
-        
+
         print(f"\n {Color.GREEN}✓ Servidor API iniciado{Color.END}")
         print(f"\n {Color.CYAN}Configuración:{Color.END}")
         print(f" {Color.CYAN}VPS: {Color.GREEN}{vps_name}{Color.END}")
         print(f" {Color.CYAN}Puerto: {Color.GREEN}{port}{Color.END}")
         print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/api/{Color.END}")
-        
+
         moratech.log_action("admin", f"API Server '{vps_name}' iniciado en puerto {port}")
-        
+
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
         import traceback
         traceback.print_exc()
-    
+
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     menu_api_server()
 
+# ---------- Mejoras para stop_api_server ----------
 def stop_api_server():
-    """Detener servidor API"""
+    """Detener servidor API (más robusto: cierra sesiones exactas y reporta)"""
     clear_screen()
     print_banner()
     print_line()
     print(f" {Color.CYAN}DETENER SERVIDOR API{Color.END}")
     print_line()
-    
+
     confirm = input(f"\n {Color.YELLOW}¿Detener servidor API? (s/n): {Color.END}").strip().lower()
-    
-    if confirm == 's':
-        try:
-            subprocess.run(['screen', '-S', 'moratech_api', '-X', 'quit'], 
-                         stderr=subprocess.DEVNULL)
-            print(f"\n {Color.GREEN}✓ Servidor detenido{Color.END}")
-            moratech.log_action("admin", "API Server detenido")
-        except Exception as e:
-            print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
-    else:
+    if confirm != 's':
         print(f"\n {Color.YELLOW}Operación cancelada{Color.END}")
-    
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        menu_api_server()
+        return
+
+    stopped, details = stop_screen_sessions('moratech_api')
+    if stopped == 0:
+        print(f"\n {Color.YELLOW}No se encontraron sesiones 'moratech_api' activas{Color.END}")
+    else:
+        print(f"\n {Color.GREEN}✓ Se detuvieron {stopped} sesión(es) de API{Color.END}")
+        for d in details:
+            print(f"  - {d}")
+
+    try:
+        moratech.log_action("admin", "API Server detenido")
+    except:
+        pass
+
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     menu_api_server()
 
@@ -1701,118 +1713,113 @@ def menu_api_general():
         menu_api_general()
 
 def start_api_general_server():
-    """Iniciar servidor API General (VPS Central)"""
+    """Iniciar servidor API General (robusto, evita duplicados)."""
     clear_screen()
     print_banner()
     print_line()
     print(f" {Color.CYAN}INICIAR API GENERAL (Dashboard Central){Color.END}")
     print_line()
-    
+
     port = input(f"\n {Color.GREEN}Puerto para API General (default: 9100): {Color.END}").strip()
     if not port:
         port = "9100"
-    
-    print(f"\n {Color.YELLOW}Iniciando API General...{Color.END}")
-    
+
+    # evitar duplicados
+    existing = find_screen_sessions('moratech_api_general')
+    if existing:
+        print(f"\n {Color.YELLOW}Ya existe sesión para 'moratech_api_general':{Color.END}")
+        for s in existing:
+            print(f"  - {s}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+
     try:
         import os
-        # directorio raíz del proyecto (uno arriba del directorio 'modules')
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
-        
-        api_module = 'modules.api_general'  # lanzaremos con -m para evitar colisiones con módulos locales
-        
-        # Verificar que exista el paquete / módulo (opcionalmente)
+        api_module = 'modules.api_general'
         api_path = os.path.join(project_root, 'modules', 'api_general.py')
         if not os.path.exists(api_path):
             print(f" {Color.RED}✗ Error: api_general.py no encontrado en {api_path}{Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
-        
-        # Verificar Flask (instalación mínima)
-        check_flask = subprocess.run(['python3', '-c', 'import flask'], 
-                                    capture_output=True, text=True)
-        
+
+        check_flask = subprocess.run(['python3', '-c', 'import flask'], capture_output=True, text=True)
         if check_flask.returncode != 0:
             print(f" {Color.YELLOW}Instalando Flask...{Color.END}")
-            subprocess.run(['apt-get', 'install', '-y', 'python3-flask'],
-                         capture_output=True, text=True)
+            subprocess.run(['apt-get', 'install', '-y', 'python3-flask'], capture_output=True, text=True)
             print(f" {Color.GREEN}✓ Flask instalado{Color.END}")
-        
-        # Abrir puerto
+
         try:
             subprocess.run(['ufw', 'allow', port], stderr=subprocess.DEVNULL)
         except Exception:
             pass
-        
-        # Iniciar servidor usando -m desde el root del proyecto (evita que 'modules' sea sys.path[0])
-        import time
+
         cmd = ['python3', '-m', api_module, port]
-        subprocess.run([
-            'screen', '-dmS', 'moratech_api_general'
-        ] + cmd, cwd=project_root)
-        
+        subprocess.run(['screen', '-dmS', 'moratech_api_general'] + cmd, cwd=project_root)
         time.sleep(2)
-        
-        # Verificar si el screen se creó
-        check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
-        if 'moratech_api_general' not in check.stdout:
-            print(f"\n {Color.RED}✗ El servidor no pudo iniciar{Color.END}")
+
+        existing = find_screen_sessions('moratech_api_general')
+        if not existing:
+            print(f"\n {Color.RED}✗ El servidor no pudo iniciar (no se encontró screen){Color.END}")
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
-        
-        # Guardar puerto
+
         port_file = CONFIG_DIR / 'api_general_port.txt'
         CONFIG_DIR.mkdir(exist_ok=True)
         with open(port_file, 'w') as f:
             f.write(port)
-        
-        # Obtener IP para mostrar URLs (intentar curl, fallback a placeholder)
+
         try:
-            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
-                                     capture_output=True, text=True, timeout=3)
+            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip() or "TU_IP"
         except:
             server_ip = "TU_IP"
-        
+
         print(f"\n {Color.GREEN}✓ API General iniciado{Color.END}")
         print(f"\n {Color.CYAN}Configuración:{Color.END}")
         print(f" {Color.CYAN}Puerto: {Color.GREEN}{port}{Color.END}")
         print(f" {Color.CYAN}Dashboard: {Color.GREEN}http://{server_ip}:{port}/dashboard-global{Color.END}")
         print(f" {Color.CYAN}Panel Control: {Color.GREEN}http://{server_ip}:{port}/panel-control{Color.END}")
-        
+
         moratech.log_action("admin", f"API General iniciado en puerto {port}")
-        
+
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
-    
+
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     menu_api_general()
 
-
 def stop_api_general_server():
-    """Detener servidor API General"""
+    """Detener servidor API General (cerrar sesiones exactas)."""
     clear_screen()
     print_banner()
     print_line()
     print(f" {Color.CYAN}DETENER API GENERAL{Color.END}")
     print_line()
-    
+
     confirm = input(f"\n {Color.YELLOW}¿Detener API General? (s/n): {Color.END}").strip().lower()
-    
-    if confirm == 's':
-        try:
-            subprocess.run(['screen', '-S', 'moratech_api_general', '-X', 'quit'], 
-                         stderr=subprocess.DEVNULL)
-            print(f"\n {Color.GREEN}✓ API General detenido{Color.END}")
-            moratech.log_action("admin", "API General detenido")
-        except Exception as e:
-            print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
-    else:
+    if confirm != 's':
         print(f"\n {Color.YELLOW}Operación cancelada{Color.END}")
-    
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        menu_api_general()
+        return
+
+    stopped, details = stop_screen_sessions('moratech_api_general')
+    if stopped == 0:
+        print(f"\n {Color.YELLOW}No se encontraron sesiones 'moratech_api_general' activas{Color.END}")
+    else:
+        print(f"\n {Color.GREEN}✓ Se detuvieron {stopped} sesión(es) de API General{Color.END}")
+        for d in details:
+            print(f"  - {d}")
+
+    try:
+        moratech.log_action("admin", "API General detenido")
+    except:
+        pass
+
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     menu_api_general()
-
+    
 def view_api_general_logs():
     """Ver logs del API General"""
     clear_screen()
@@ -1838,3 +1845,41 @@ def view_api_general_logs():
         input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     
     menu_api_general()
+
+
+#limpiado correcto
+
+def find_screen_sessions(name):
+    """
+    Devuelve lista de nombres completos de sesiones screen que terminen en '.<name>'
+    Ej: ['1234.moratech_api']
+    """
+    try:
+        out = subprocess.run(['screen', '-ls'], capture_output=True, text=True).stdout
+    except Exception:
+        return []
+
+    sessions = []
+    # cada línea puede ser: "\t1234.moratech_api\t(Detached)"
+    for line in out.splitlines():
+        m = re.search(r'(\d+\.' + re.escape(name) + r')\b', line)
+        if m:
+            sessions.append(m.group(1))
+    return sessions
+
+def stop_screen_sessions(name):
+    """
+    Cierra cada sesión encontrada para el nombre indicado.
+    Devuelve (stopped_count, detalles_lista)
+    """
+    sessions = find_screen_sessions(name)
+    details = []
+    stopped = 0
+    for s in sessions:
+        try:
+            subprocess.run(['screen', '-S', s, '-X', 'quit'], capture_output=True, text=True)
+            details.append(f"quit {s}")
+            stopped += 1
+        except Exception as e:
+            details.append(f"error {s}: {e}")
+    return stopped, details
