@@ -144,7 +144,7 @@ def add_token_user():
         print(f"\n{Color.RED}✗ {msg}{Color.END}")
 
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
-    
+
 def ejecutar_creacion_usuario(username, password, dias, user_type="ssh", max_conn=1, display_name=None):
     """
     UNIFICADA: Reemplaza la lógica de add_ssh_user y add_token_user para la API.
@@ -253,30 +253,26 @@ def editar_usuario():
     
     choice = input(f"\n {Color.CYAN}►{Color.END} Opción: ").strip()
     
-    if choice == '1':
+    if choice == '1': # SUMAR
         days_input = input(f" {Color.GREEN}Días a sumar: {Color.END}").strip()
         if days_input.isdigit():
+            # Llamamos a la lógica unificada
             success, msg, new_date = ejecutar_renovacion_dias(username_input, int(days_input))
             if success:
-                print(f"{' ' * 40}\r {Color.GREEN}✓ {msg}.{Color.END}")
-                print(f" {Color.CYAN}Nueva fecha: {new_date.strftime('%d/%m/%Y %H:%M')}{Color.END}")
+                print(f"\r {Color.GREEN}✓ {msg}. Nueva fecha: {new_date.strftime('%d/%m/%Y %H:%M')}{Color.END}")
             else:
                 print(f"\n {Color.RED}✗ {msg}{Color.END}")
-        else: print(f" {Color.RED}✗ Valor inválido.{Color.END}")
 
-    elif choice == '2':
+    elif choice == '2': # REINICIAR
         new_days_input = input(f" {Color.GREEN}Nuevos días (0 = hoy 6pm): {Color.END}").strip()
         if new_days_input.isdigit():
+            # Llamamos a la lógica unificada
             success, msg, new_date = ejecutar_reinicio_dias(username_input, int(new_days_input))
             if success:
-                print(f"{' ' * 40}\r {Color.GREEN}✓ {msg}.{Color.END}")
-                if new_date:
-                    print(f" {Color.CYAN}Nueva fecha: {new_date.strftime('%d/%m/%Y %H:%M')}{Color.END}")
+                print(f"\r {Color.GREEN}✓ {msg}. Nueva fecha: {new_date.strftime('%d/%m/%Y %H:%M')}{Color.END}")
             else:
                 print(f"\n {Color.RED}✗ {msg}{Color.END}")
-        else:
-            print(f" {Color.RED}✗ Valor inválido.{Color.END}")
-
+                
     elif choice == '3':
         if user_data.get('type') == 'token':
             print(f" {Color.YELLOW}Los tokens usan la contraseña maestra (Opción 12).{Color.END}")
@@ -291,11 +287,10 @@ def editar_usuario():
                     print(f"{' ' * 40}\r {Color.GREEN}✓ Contraseña actualizada.{Color.END}")
             else: print(f" {Color.RED}✗ No puede estar vacía.{Color.END}")
    
-    input(f"\n {Color.CYAN}Presiona Enter para continuar...{Color.END}")
+    input(f"\n {Color.CYAN}Presiona Enter para continuar...{Color.END}")  
 
-#funcion de suma fisica de dias
 def ejecutar_renovacion_dias(username, days, referencia='', origen='manual'):
-    """Lógica unificada para SUMAR días (Opción 1 del menú y API)"""
+    """SUMAR días a la fecha actual o a la fecha de expiración si aún es válida"""
     users = load_users()
     if username not in users:
         return False, "Usuario no encontrado", None
@@ -304,64 +299,51 @@ def ejecutar_renovacion_dias(username, days, referencia='', origen='manual'):
         user_data = users[username]
         now = datetime.now()
         
-        # --- TU LÓGICA DE RENOVACIÓN ---
+        # Lógica: Si el usuario ya expiró, sumamos desde hoy. Si no, sumamos desde su vencimiento.
         if user_data.get('expires'):
             current_expire = datetime.fromisoformat(user_data['expires'])
-            # Si ya venció, empezamos a contar desde hoy a las 6pm
             if now > current_expire:
+                # Ya venció: Hoy + días (a las 6pm)
                 base_date = now.date() + timedelta(days=days)
-                new_expire = datetime.combine(base_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
             else:
-                # Si aún está vigente, sumamos los días a la fecha que ya tiene
-                new_expire = current_expire + timedelta(days=days)
+                # Sigue vigente: Vencimiento actual + días (mantiene las 6pm si ya las tenía)
+                base_date = current_expire.date() + timedelta(days=days)
         else:
-            # Si no tenía fecha (era ilimitado o nuevo), desde hoy a las 6pm
+            # No tenía fecha: Hoy + días
             base_date = now.date() + timedelta(days=days)
-            new_expire = datetime.combine(base_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
+
+        new_expire = datetime.combine(base_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
         
         users[username]['expires'] = new_expire.isoformat()
         users[username]['enabled'] = True
         
+        # IMPORTANTE: save_users actualizará Linux (usermod -e) automáticamente
         if save_users({username: users[username]}, full_database=users):
-            # Llamamos a tu función de registro (asegúrate que esté importada en users.py)
-            # registrar_activacion('renovar', username, user_data.get('display_name', username), days, referencia, origen, True)
             return True, "Renovación exitosa", new_expire
         
         return False, "Error al guardar cambios", None
-        
     except Exception as e:
         return False, f"Error: {str(e)}", None
-    
-#funcion de reinicio de dias FISICO
+
 def ejecutar_reinicio_dias(username, days):
-    """Lógica unificada para establecer nueva fecha de expiración"""
+    """REINICIAR: Establece una fecha nueva contando desde hoy"""
     users = load_users()
     if username not in users:
         return False, "Usuario no encontrado", None
 
     try:
-        if days >= 0:
-            expire_date = (datetime.now().date() + timedelta(days=days))
-            # Seteamos siempre a las 18:00 como en tu código original
-            new_expire = datetime.combine(expire_date, datetime.min.time()).replace(
-                hour=18, minute=0, second=0
-            )
-            users[username]['expires'] = new_expire.isoformat()
-        else:
-            # Si mandas días negativos, lo dejamos ilimitado
-            users[username]['expires'] = None
-            new_expire = None
-
+        expire_date = (datetime.now().date() + timedelta(days=days))
+        new_expire = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0)
+        
+        users[username]['expires'] = new_expire.isoformat()
         users[username]['enabled'] = True
         
-        # Guardado selectivo
         if save_users({username: users[username]}, full_database=users):
-            return True, "Vigencia actualizada", new_expire
-        return False, "Error al guardar en base de datos", None
-        
+            return True, "Reinicio de días exitoso", new_expire
+        return False, "Error al guardar", None
     except Exception as e:
-        return False, f"Error de cálculo: {str(e)}", None
-    
+        return False, f"Error: {str(e)}", None
+
 def menu_borrar_usuarios():
     """Menú para eliminar usuarios"""
     while True:
