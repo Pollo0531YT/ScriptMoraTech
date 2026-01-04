@@ -337,6 +337,8 @@ def ejecutar_reinicio_dias(username, days):
     except Exception as e:
         return False, f"Error: {str(e)}", None
 
+
+#ENCARGADO DE BORRADO DE USUARIOS#
 def menu_borrar_usuarios():
     """Menú para eliminar usuarios"""
     while True:
@@ -365,105 +367,132 @@ def menu_borrar_usuarios():
         elif choice == '0':
             break
 
-def ejecutar_borrado_fisico(username):
-    """Función maestra para purgar un usuario de Linux y JSON con esteroides"""
-    users = load_users()
-    if username not in users:
-        return False, "Usuario no encontrado"
-
+def ejecutar_borrado_fisico(username, users_db=None):
+    """
+    ÚNICA FUNCIÓN MAESTRA DE BORRADO
+    Borra en Linux (pkill + userdel) y actualiza el diccionario/JSON.
+    """
     try:
-
-        # 1. Matar procesos
+        # 1. Expulsar al usuario y matar procesos
         subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    
-        # 2. Eliminar de Linux
-        subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-    
-        # 3. Quitar del JSON    
-        if username in users:
-            del users[username]
-    
-        # 4. Guardar
-        if save_users({}, full_database=users):
-            return True, "Usuario purgado correctamente"
-        else:
-            return False, "Error al guardar base de datos"
+        # 2. Borrar de Linux (fuerza -f y borra home -r)
+        subprocess.run(['userdel', '-f', '-r', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
+        # 3. Gestión del JSON
+        if users_db is not None:
+            # Si estamos en un proceso masivo, borramos del diccionario que nos pasaron
+            if username in users_db:
+                del users_db[username]
+            return True, "Removido"
+        else:
+            # Borrado individual: Cargar, borrar y guardar
+            db = load_users()
+            if username in db:
+                del db[username]
+                save_users(db)
+                return True, "Usuario purgado correctamente"
+            return False, "Usuario no encontrado en la base de datos"
+            
     except Exception as e:
-        return False, f"Error crítico en el proceso: {str(e)}"
-
-# Tu función de menú ahora queda cortita:
+        return False, f"Error crítico: {str(e)}"
+    
 def borrar_usuario_especifico():
-    username = input(f"\n{Color.GREEN}Usuario a eliminar: {Color.END}").strip()
-    success, msg = ejecutar_borrado_fisico(username)
-    if success:
-        print(f"{Color.GREEN}✓ {msg}{Color.END}")
+    """Opción 1: Borrar un solo usuario por nombre"""
+    print(f"\n {Color.CYAN}--- BORRAR USUARIO ESPECÍFICO ---{Color.END}")
+    username = input(f" {Color.GREEN}Nombre de usuario a eliminar: {Color.END}").strip()
+    
+    if username == "admin":
+        print(f" {Color.RED}✗ No puedes eliminar al administrador.{Color.END}")
     else:
-        print(f"{Color.RED}✗ {msg}{Color.END}")
-    input(f"\n{Color.CYAN}Presiona Enter...{Color.END}") 
+        print(f" {Color.YELLOW}⏳ Procesando borrado...{Color.END}", end="\r")
+        success, msg = ejecutar_borrado_fisico(username)
+        print(f" {' ' * 30}\r", end="") # Limpia la línea de carga
+        if success:
+            print(f" {Color.GREEN}✓ {msg}{Color.END}")
+        else:
+            print(f" {Color.RED}✗ {msg}{Color.END}")
+            
+    input(f"\n {Color.CYAN}Presiona Enter para continuar...{Color.END}")
 
 def borrar_iterativo():
-    """Eliminar usuarios uno por uno - Corregido"""
+    """Opción 2: Preguntar uno por uno"""
     users = load_users()
-    deleted_count = 0
+    if not users:
+        print(f" {Color.YELLOW}No hay usuarios registrados.{Color.END}")
+        return
 
+    deleted_count = 0
+    print(f"\n {Color.CYAN}Iniciando revisión de usuarios...{Color.END}")
+    
     for username in list(users.keys()):
         if username == "admin": continue
-        print(f"\n{Color.YELLOW}Usuario: {Color.WHITE}{username}{Color.END}")
-        confirm = input(f" ¿Eliminar? (s/n): ").strip().lower()
+        
+        print(f" {Color.YELLOW}USUARIO: {Color.WHITE}{username}{Color.END}")
+        confirm = input(f" {Color.CYAN}¿Eliminar físicamente? (s/n): {Color.END}").strip().lower()
 
         if confirm == 's':
-            # 1. Expulsar y Borrar de Linux REAL
-            subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            # 2. Quitar del diccionario
-            del users[username]
+            print(f"   {Color.RED}✗ Eliminando {username}...{Color.END}", end="\r")
+            ejecutar_borrado_fisico(username, users) # Llama a la maestra
             deleted_count += 1
-            print(f" {Color.RED}✗ Eliminado del sistema{Color.END}")
+            print(f"   {Color.GREEN}✓ {username} purgado del sistema.{Color.END}      ")
 
     if deleted_count > 0:
-        save_users({}, full_database=users)
-        print(f"\n{Color.GREEN}✓ Proceso terminado. {deleted_count} usuarios purgados.{Color.END}")
+        save_users(users) # Guardamos el JSON final con los cambios masivos
+        print(f"\n {Color.GREEN}✓ Proceso terminado. {deleted_count} usuarios purgados.{Color.END}")
     
-    input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 def borrar_expirados():
-    """Eliminar usuarios caducados - Purgado Real"""
+    """Opción 3: Limpieza automática de caducados"""
     clear_screen()
     print_banner()
     users = load_users()
     now = datetime.now()
-    to_delete = [u for u, d in users.items() if d.get('expires') and now > datetime.fromisoformat(d['expires'])]
+    
+    # Buscamos quiénes ya pasaron su fecha
+    vencidos = [u for u, d in users.items() if d.get('expires') and now > datetime.fromisoformat(d['expires'])]
 
-    if not to_delete:
-        print(f" {Color.GREEN}✨ No hay usuarios caducados.{Color.END}")
+    if not vencidos:
+        print(f" {Color.GREEN}✨ El sistema está limpio. No hay usuarios caducados.{Color.END}")
     else:
-        print(f" {Color.YELLOW}Limpiando {len(to_delete)} usuarios...{Color.END}")
-        for username in to_delete:
-            subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            del users[username]
+        print(f" {Color.YELLOW}Se encontraron {len(vencidos)} usuarios expirados.{Color.END}")
+        print(f" {Color.CYAN}Iniciando purga masiva...{Color.END}\n")
         
-        save_users({}, full_database=users)
-        print(f" {Color.GREEN}✓ Usuarios expirados eliminados físicamente.{Color.END}")
+        for username in vencidos:
+            print(f" {Color.GRAY}>> Purgando {username}...{Color.END}", end="\r")
+            ejecutar_borrado_fisico(username, users) # Llama a la maestra
+            print(f" {Color.RED}✗ {username} eliminado.{Color.END}           ")
+            time.sleep(0.1) # Efecto visual de progreso
         
-    input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+        save_users(users) # Actualiza el JSON de una vez
+        print(f"\n {Color.GREEN}✓ Limpieza de expirados completada con éxito.{Color.END}")
+        
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 def borrar_todos():
-    """Eliminar TODOS los usuarios - Limpieza Total"""
-    print(f"\n{Color.RED}⚠️  ADVERTENCIA: LIMPIEZA TOTAL DEL SISTEMA{Color.END}")
-    if input(f"{Color.YELLOW}Escribe 'CONFIRMAR' para continuar: {Color.END}").strip() == "CONFIRMAR":
+    """Opción 4: Reset total"""
+    print(f"\n {Color.RED}⚠️  ¡ATENCIÓN! ESTO ELIMINARÁ TODOS LOS USUARIOS DEL SISTEMA ⚠️{Color.END}")
+    confirm = input(f" {Color.YELLOW}Escribe 'CONFIRMAR' para proceder: {Color.END}").strip()
+    
+    if confirm == "CONFIRMAR":
         users = load_users()
-        # Filtrar usuarios reales de Linux para borrar (menos admin)
+        total = len(users) - (1 if "admin" in users else 0)
+        
+        print(f"\n {Color.CYAN}Iniciando formateo de usuarios...{Color.END}")
         for username in list(users.keys()):
             if username != "admin":
-                subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                subprocess.run(['userdel', '-f', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        
-        if save_users({}, full_database={}):
-            print(f"\n{Color.GREEN}✓ Servidor limpio de usuarios externos.{Color.END}")
-    input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
+                print(f" {Color.RED}✗ Eliminando: {username}{Color.END}", end="\r")
+                ejecutar_borrado_fisico(username, users)
+                print(f" {Color.RED}✗ {username} eliminado del servidor.{Color.END}")
 
+        save_users(users) # En este punto users solo tiene a admin o está vacío
+        print(f"\n {Color.GREEN}✓ Servidor totalmente limpio.{Color.END}")
+    else:
+        print(f" {Color.YELLOW}Operación cancelada.{Color.END}")
+        
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+#ENCARGADO DE MOSTRAR USUARIOS REGISTRADOS O INFO EXACTA
 def mostrar_users_registrados():
     """Mostrar usuarios registrados con diseño jerárquico y contador final"""
     clear_screen()
@@ -573,6 +602,7 @@ def info_exacta_usuario():
         
     input(f"\n{Color.CYAN}Presiona Enter para volver al menú...{Color.END}")
 
+#RE-INICIAR CONTRASEÑA DE TOKEN
 def reset_token_password():
     """Resetear contraseña de tokens"""
     clear_screen()
@@ -600,10 +630,21 @@ def reset_token_password():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
+
 def load_users():
     """Carga usuarios"""
     with open(USERS_FILE, 'r') as f:
         return json.load(f)
+
+def load_token_config():
+    """Carga config de tokens"""
+    with open(TOKEN_CONFIG_FILE, 'r') as f:
+        return json.load(f)
+
+def save_token_config(config):
+    """Guarda config de tokens"""
+    with open(TOKEN_CONFIG_FILE, 'w') as f:
+        json.dump(config, f, indent=4)
 
 def save_users(users_to_sync, full_database=None):
     """Versión con margen de seguridad para evitar bloqueo SSH prematuro"""
@@ -647,17 +688,7 @@ def save_users(users_to_sync, full_database=None):
     except Exception:
         return False
       
-def load_token_config():
-    """Carga config de tokens"""
-    with open(TOKEN_CONFIG_FILE, 'r') as f:
-        return json.load(f)
 
-def save_token_config(config):
-    """Guarda config de tokens"""
-    with open(TOKEN_CONFIG_FILE, 'w') as f:
-        json.dump(config, f, indent=4)
-
-# sistema de backups regular
 
 def menu_backup():
     """Menú de backup de usuarios"""
@@ -829,316 +860,166 @@ def backup_online_chumo():
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 def restore_online_chumo():
-    """Restaurar usuarios desde servidor HTTP (formato texto)"""
+    """Restaurar usuarios desde servidor HTTP con progreso visual profesional"""
     clear_screen()
     print_banner()
-    print_line()
     print(f" {Color.CYAN}RESTAURAR USUARIOS EN LÍNEA{Color.END}")
-    print_line()
+    print("-" * 45)
     
-    # Mostrar última URL guardada
+    # Mostrar última URL para facilitar la vida al usuario
     try:
         url_file = CONFIG_DIR / 'last_backup_url.txt'
         if url_file.exists():
             with open(url_file, 'r') as f:
                 last_url = f.read().strip()
-                print(f"\n {Color.YELLOW}Último backup en línea:{Color.END}")
-                print(f" {Color.GREEN}{last_url}{Color.END}\n")
-    except:
-        pass
+                print(f" {Color.YELLOW}Último backup detectado:{Color.END}")
+                print(f" {Color.GRAY}{last_url}{Color.END}\n")
+    except: pass
     
-    backup_url = input(f" {Color.GREEN}URL del backup: {Color.END}").strip()
-    
-    if not backup_url:
-        print(f" {Color.RED}✗ URL requerida{Color.END}")
-        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-        return
-    
-    print(f"\n {Color.YELLOW}Descargando backup...{Color.END}")
+    backup_url = input(f" {Color.GREEN}Enlace del backup: {Color.END}").strip()
+    if not backup_url: return
+
+    print(f"\n {Color.YELLOW}⏳ Descargando base de datos...{Color.END}", end="\r")
     
     try:
-        import subprocess
-        import tempfile
+        import requests # Si no tienes requests, usa subprocess con curl
+        response = requests.get(backup_url, timeout=10)
+        if response.status_code != 200:
+            print(f" {Color.RED}✗ No se pudo descargar el archivo (Error {response.status_code}){Color.END}")
+            return
         
-        # Descargar archivo
-        temp_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.txt')
-        temp_file.close()
-        
-        result = subprocess.run([
-            'curl', '-s', '-o', temp_file.name, backup_url
-        ], capture_output=True, text=True)
-        
-        if result.returncode == 0:
-            # Leer backup descargado
-            with open(temp_file.name, 'r') as f:
-                backup_content = f.read().strip()
-            
-            if not backup_content:
-                print(f" {Color.RED}✗ Backup vacío o inválido{Color.END}")
-                import os
-                os.unlink(temp_file.name)
-                input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-                return
-            
-            # Parsear backup
-            users = {}
-            token_config = load_token_config()
-            
-            for line in backup_content.split('\n'):
-                if not line.strip():
-                    continue
-                
-                parts = line.split(':')
-                
-                if 'TOKEN' in line:
-                    # Formato TOKEN: {token}:{contraseña}:TOKEN:{dias}:{nombre_visual}
-                    if len(parts) >= 5:
-                        token = parts[0]
-                        password = parts[1]
-                        days = int(parts[3])
-                        display_name = parts[4]
+        backup_content = response.text.strip()
+        if not backup_content:
+            print(f" {Color.RED}✗ El archivo de backup está vacío.{Color.END}")
+            return
 
-                        
-                        # Guardar contraseña token si es la primera
-                        if not token_config.get('token_password'):
-                            token_config['token_password'] = password
-                            save_token_config(token_config)
-                        
-                        #expires = (datetime.now() + timedelta(days=days)).isoformat() if days > 0 else None
+        # Cargamos DB actual para fusionar
+        db_completa = load_users()
+        lineas = backup_content.split('\n')
+        total = len(lineas)
+        exitos = 0
 
-                        # AJUSTE: Restamos 1 día si el backup trae días de más (CHUMO)
-                        real_days = max(0, days - 1)
-                        expire_date = (datetime.now().date() + timedelta(days=real_days))
-                        expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
-                        
-                        users[token] = {
-                            "password": token_config['token_password'],
-                            "role": "user",
-                            "type": "token",
-                            "display_name": display_name,
-                            "created": datetime.now().isoformat(),
-                            "expires": expires,
-                            "max_connections": 1,
-                            "enabled": True,
-                            "original_token": token
-                        }
-                else:
-                    # Formato SSH: {nombre}:{contraseña}:{max_conexiones}:{dias}
-                    if len(parts) >= 4:
-                        username = parts[0]
-                        password = parts[1]
-                        max_conn = int(parts[2])
-                        days = int(parts[3])
-                        
-                        #expires = (datetime.now() + timedelta(days=days)).isoformat() if days > 0 else None
-                        real_days = max(0, days - 1)
-                        expire_date = (datetime.now().date() + timedelta(days=real_days))
-                        expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
+        print(f" {Color.GREEN}✓ Descarga exitosa. Procesando {total} usuarios...{Color.END}\n")
 
-                        users[username] = {
-                            "password": password,
-                            "role": "user",
-                            "type": "ssh",
-                            "created": datetime.now().isoformat(),
-                            "expires": expires,
-                            "max_connections": max_conn,
-                            "enabled": True
-                        }
+        for i, line in enumerate(lineas, 1):
+            parts = line.split(':')
+            if not parts or len(parts) < 4: continue
             
-            print(f" {Color.GREEN}✓ Backup descargado{Color.END}")
-            print(f" {Color.CYAN}Usuarios en backup: {len(users)}{Color.END}")
-            
-            # Mostrar preview
-            print(f"\n {Color.YELLOW}Preview de usuarios:{Color.END}")
-            for i, (username, data) in enumerate(list(users.items())[:5], 1):
-                user_type = data.get('type', 'ssh')
-                if user_type == 'token':
-                    display = f"{data.get('display_name')} ({username[:8]}...)"
-                else:
-                    display = username
-                print(f" {i}. {display} ({user_type})")
-            
-            if len(users) > 5:
-                print(f" ... y {len(users) - 5} más")
-            
-            confirm = input(f"\n {Color.YELLOW}¿Restaurar estos usuarios? (s/n): {Color.END}").strip().lower()
-            
-            if confirm == 's':
-                clear_screen()
-                print_banner()
-                total = len(users)
-                print(f"\n {Color.YELLOW}🚀 Iniciando restauración masiva...{Color.END}")
-                
-                # 1. Cargamos la base de datos actual completa para no perder nada
-                db_completa = load_users() 
-                
-                # 2. Fusionamos en memoria
-                for username, data in users.items():
-                    db_completa[username] = data
-
-                # 3. Restauración con progreso visual
-                exitos = 0
-                print(f" {Color.CYAN}Aplicando cambios en el sistema...{Color.END}\n")
-                
-                for i, (username, data) in enumerate(users.items(), 1):
-                    # Enviamos de a UNO a save_users pero pasándole la db_completa 
-                    # para que el JSON siempre esté íntegro.
-                    # Al pasarle full_database, evitamos que se borren los anteriores.
-                    if save_users({username: data}, full_database=db_completa):
-                        exitos += 1
-                    
-                    # Cálculo de días para el "look" profesional
-                    expires_dt = datetime.fromisoformat(data['expires'])
-                    dias_display = max(0, (expires_dt - datetime.now()).days)
-                    
-                    # El \r permite que la línea se actualice en el mismo lugar
-                    print(f"\r {Color.YELLOW}Restaurando: {Color.GREEN}{username[:12]:<12}{Color.END} [{dias_display:2} d] ({i}/{total})", end="", flush=True)
-
-                # Guardado final de seguridad (por si acaso)
-                save_users({}, full_database=db_completa)
-
-                print(f"\n\n {Color.GREEN}✓ Proceso finalizado exitosamente.{Color.END}")
-                print(f" {Color.CYAN}Total procesado: {exitos} de {total} usuarios.{Color.END}")
-                moratech.log_action("admin", f"Restauración masiva visual exitosa: {total} usuarios")
-                       
+            # Identificar formato y parsear
+            username = parts[0]
+            if 'TOKEN' in line:
+                # Formato TOKEN: {token}:{pass}:TOKEN:{dias}:{nombre}
+                password, days, display_name = parts[1], int(parts[3]), parts[4]
+                tipo = "token"
             else:
-                print(f"\n {Color.YELLOW}Restauración cancelada{Color.END}")
-        else:
-            print(f" {Color.RED}✗ Error descargando backup{Color.END}")
+                # Formato SSH: {nombre}:{pass}:{conn}:{dias}
+                password, max_conn, days = parts[1], int(parts[2]), int(parts[3])
+                tipo = "ssh"
+                display_name = username
+
+            # Calcular expiración
+            real_days = max(0, days - 1)
+            expire_date = (datetime.now().date() + timedelta(days=real_days))
+            expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0).isoformat()
+
+            # Estructura para el JSON
+            user_data = {
+                "password": password,
+                "role": "user",
+                "type": tipo,
+                "display_name": display_name,
+                "created": datetime.now().isoformat(),
+                "expires": expires,
+                "max_connections": int(parts[2]) if tipo == "ssh" else 1,
+                "enabled": True
+            }
+
+            # EFECTO VISUAL: Actualiza la misma línea
+            print(f"\r {Color.YELLOW}Restaurando: {Color.WHITE}{username[:12]:<12}{Color.END} [{days:2}d] ({i}/{total})", end="", flush=True)
+
+            # SINCRONIZAR CON EL SISTEMA (Linux)
+            # Llamamos a save_users pero solo para el usuario actual para que lo cree en Linux
+            if save_users({username: user_data}, full_database=db_completa):
+                db_completa[username] = user_data # Guardamos en nuestra copia local
+                exitos += 1
+            
+        # Guardado final de la base de datos completa
+        save_users({}, full_database=db_completa)
         
-        # Limpiar archivo temporal
-        import os
-        os.unlink(temp_file.name)
-        
+        print(f"\n\n {Color.GREEN}✓ Restauración finalizada. {exitos}/{total} usuarios en línea.{Color.END}")
+        moratech.log_action("admin", f"Restauración Online: {exitos} usuarios")
+
     except Exception as e:
-        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
-        import traceback
-        traceback.print_exc()
+        print(f"\n {Color.RED}✗ Error crítico: {e}{Color.END}")
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 def restore_local_chumo():
-    """Restaurar usuarios desde backup local (formato .txt Chumo) con progreso visual"""
+    """Restaurar desde backup local .txt con progreso visual"""
     clear_screen()
     print_banner()
-    print_line()
-    print(f" {Color.CYAN}RESTAURAR USUARIOS LOCALMENTE (FORMATO TXT){Color.END}")
-    print_line()
+    print(f" {Color.CYAN}RESTAURAR BACKUP LOCAL (.TXT){Color.END}\n")
     
+    backup_dir = CONFIG_DIR / 'backups'
+    backups = sorted(backup_dir.glob('backup_*.txt'), reverse=True)
+
+    if not backups:
+        print(f" {Color.RED}No se encontraron archivos de backup.{Color.END}")
+        input("\nEnter para volver..."); return
+
+    for i, b in enumerate(backups[:10], 1):
+        with open(b, 'r') as f: count = sum(1 for l in f if l.strip())
+        print(f" {Color.GREEN}[{i}]{Color.END} {b.name} {Color.GRAY}({count} users){Color.END}")
+
+    opc = input(f"\n {Color.YELLOW}Selecciona un archivo (0 para cancelar): {Color.END}")
+    if not opc or opc == '0': return
+
     try:
-        backup_dir = CONFIG_DIR / 'backups'
+        seleccionado = backups[int(opc)-1]
+        with open(seleccionado, 'r') as f: lineas = f.readlines()
         
-        if not backup_dir.exists():
-            print(f"\n {Color.YELLOW}No hay directorio de backups{Color.END}")
-            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-            return
-        
-        # BUSCAMOS ARCHIVOS .txt
-        backups = sorted(backup_dir.glob('backup_*.txt'), reverse=True)
-        
-        if not backups:
-            print(f"\n {Color.YELLOW}No hay backups .txt disponibles{Color.END}")
-            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
-            return
-        
-        print(f"\n {Color.YELLOW}Backups disponibles:{Color.END}\n")
-        
-        for i, backup in enumerate(backups[:10], 1):
-            backup_time = datetime.fromtimestamp(backup.stat().st_mtime)
-            # Contar líneas para saber cuántos usuarios hay
-            with open(backup, 'r') as f:
-                count = sum(1 for line in f if line.strip())
+        db_completa = load_users()
+        total = len(lineas)
+        exitos = 0
+
+        print(f"\n {Color.YELLOW}🚀 Restaurando {total} usuarios...{Color.END}")
+
+        for i, line in enumerate(lineas, 1):
+            line = line.strip()
+            if not line: continue
+            parts = line.split(':')
+            username = parts[0]
             
-            print(f" {Color.GREEN}[{i}]{Color.END} {backup.name}")
-            print(f"     {Color.CYAN}Fecha: {backup_time.strftime('%d/%m/%Y %H:%M')}{Color.END}")
-            print(f"     {Color.CYAN}Usuarios: {count}{Color.END}\n")
-        
-        print_line()
-        choice = input(f" {Color.GREEN}Selecciona backup a restaurar (0 = cancelar): {Color.END}").strip()
-        
-        if choice == '0' or not choice:
-            return
-
-        idx = int(choice) - 1
-        if 0 <= idx < len(backups):
-            selected_backup = backups[idx]
-            
-            # PROCESAR EL ARCHIVO TXT
-            users = {}
-            with open(selected_backup, 'r') as f:
-                lines = f.readlines()
-
-            for line in lines:
-                line = line.strip()
-                if not line: continue
-                parts = line.split(':')
-
-                # Identificar si es TOKEN o SSH
-                if 'TOKEN' in line and len(parts) >= 5:
-                    token, password, _, days, display_name = parts[0], parts[1], parts[2], int(parts[3]), parts[4]
-                    real_days = max(0, days - 1)
-                    expire_date = (datetime.now().date() + timedelta(days=real_days))
-                    expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
-
-                    users[token] = {
-                        "password": password, "role": "user", "type": "token",
-                        "display_name": display_name, "created": datetime.now().isoformat(),
-                        "expires": expires, "max_connections": 1, "enabled": True
-                    }
-                elif len(parts) >= 4:
-                    username, password, max_conn, days = parts[0], parts[1], int(parts[2]), int(parts[3])
-                    real_days = max(0, days - 1)
-                    expire_date = (datetime.now().date() + timedelta(days=real_days))
-                    expires = datetime.combine(expire_date, datetime.min.time()).replace(hour=18, minute=0, second=0).isoformat()
-
-                    users[username] = {
-                        "password": password, "role": "user", "type": "ssh",
-                        "created": datetime.now().isoformat(), "expires": expires,
-                        "max_connections": max_conn, "enabled": True
-                    }
-
-            print(f"\n {Color.CYAN}Usuarios listos para restaurar: {len(users)}{Color.END}")
-            confirm = input(f"\n {Color.YELLOW}¿Confirmar restauración local? (s/n): {Color.END}").strip().lower()
-            
-            if confirm == 's':
-                clear_screen()
-                print_banner()
-                total = len(users)
-                print(f"\n {Color.YELLOW}🚀 Iniciando restauración masiva...{Color.END}")
-                
-                # 1. CARGAR USUARIOS ACTUALES PRIMERO
-                # Suponiendo que tienes una función load_users()
-                current_users = load_users() 
-                
-                exitos = 0
-                for i, (username, data) in enumerate(users.items(), 1):
-                    # 2. FUSIONAR EN LA VARIABLE TEMPORAL
-                    current_users[username] = data
-                    
-                    # Cálculo para el log visual
-                    expires_dt = datetime.fromisoformat(data['expires'])
-                    dias_display = max(0, (expires_dt - datetime.now()).days)
-                    
-                    print(f"\r {Color.YELLOW}Preparando: {Color.GREEN}{username}{Color.END} [{dias_display} días] ({i}/{total})...", end="", flush=True)
-                    exitos += 1
-
-                # 3. GUARDAR TODO EL DICCIONARIO COMPLETO UNA SOLA VEZ
-                # Esto evita que el archivo se sobrescriba 100 veces borrando lo anterior
-                if save_users(current_users):
-                    print(f"\n\n {Color.GREEN}✓ Proceso finalizado: {exitos} usuarios restaurados exitosamente.{Color.END}")
-                    moratech.log_action("admin", f"Restauración online completada: {exitos} usuarios")
-                else:
-                    print(f"\n\n {Color.RED}✗ Error crítico al guardar la base de datos.{Color.END}")
-
+            # --- Lógica de parseo (Igual a la online) ---
+            if 'TOKEN' in line:
+                days = int(parts[3])
+                user_data = {
+                    "password": parts[1], "role": "user", "type": "token",
+                    "display_name": parts[4], "expires": (datetime.now() + timedelta(days=days)).isoformat(),
+                    "max_connections": 1, "enabled": True
+                }
             else:
-                print(f"\n {Color.YELLOW}Operación cancelada.{Color.END}")
-        else:
-            print(f"\n {Color.RED}✗ Opción inválida.{Color.END}")
+                days = int(parts[3])
+                user_data = {
+                    "password": parts[1], "role": "user", "type": "ssh",
+                    "expires": (datetime.now() + timedelta(days=days)).isoformat(),
+                    "max_connections": int(parts[2]), "enabled": True
+                }
+
+            # Visual y Sincronización
+            print(f"\r {Color.YELLOW}Cargando: {Color.WHITE}{username[:12]:<12}{Color.END} ({i}/{total})", end="", flush=True)
+            
+            if save_users({username: user_data}, full_database=db_completa):
+                db_completa[username] = user_data
+                exitos += 1
+
+        save_users({}, full_database=db_completa)
+        print(f"\n\n {Color.GREEN}✓ {exitos} Usuarios restaurados localmente.{Color.END}")
 
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
-    
-    input(f"\n {Color.CYAN}Presiona Enter para volver...{Color.END}")
+
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 def list_backups_chumo():
     """Listar backups locales (Formato TXT de Chumo)"""
@@ -1186,8 +1067,7 @@ def list_backups_chumo():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
-#menu del checkuser
-
+# CHECK USER TRATAR DE MOVERLO A OTRA CARPETA
 def menu_checkuser():
     """Menú de CheckUser Online"""
     clear_screen()
@@ -1415,7 +1295,6 @@ def stop_checkuser_server():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
-
 def view_checkuser_logs():
     """Ver logs del CheckUser en tiempo real"""
     clear_screen()
@@ -1440,7 +1319,7 @@ def view_checkuser_logs():
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
         input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
-#MENU MAS IMPORANTE, MENU DE API SERVER PARA RENOVAR, CREAR, ETC##
+#api individual
 def menu_api_server():
     """Menú del servidor API"""
     clear_screen()
