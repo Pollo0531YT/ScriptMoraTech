@@ -178,51 +178,58 @@ def ejecutar_creacion_usuario(username, password, dias, user_type="ssh", max_con
     except Exception as e:
         return False, f"Error: {str(e)}", None
 
-def ejecutar_renovacion_dias(username, days):
-    """SUMA días a la fecha actual o a la fecha de expiración vigente"""
+def ejecutar_renovacion_dias(username, days, referencia='', origen='manual'):
     users = load_users()
-    if username not in users: return False, "No existe", None
-    
+    if username not in users:
+        return False, "Usuario no encontrado", None
+
     try:
-        data = users[username]
+        user_data = users[username]
+        # SIEMPRE obtenemos la hora actual en Costa Rica
         now = datetime.now(CR_TZ)
         
-        # Si ya expiró, sumamos desde hoy. Si no, desde su fecha actual.
-        if data.get('expires'):
-            current_exp = datetime.fromisoformat(data['expires']).replace(tzinfo=CR_TZ)
-            base = current_exp if current_exp > now else now
+        if user_data.get('expires'):
+            # Convertimos lo guardado a objeto datetime con zona horaria
+            current_expire = datetime.fromisoformat(user_data['expires']).replace(tzinfo=CR_TZ)
+            # Si ya venció, sumamos desde hoy. Si no, desde su vencimiento actual.
+            base_date = current_expire if current_expire > now else now
         else:
-            base = now
+            base_date = now
 
-        new_date = (base.date() + timedelta(days=days))
-        new_expire = datetime.combine(new_date, time(18, 0, 0)).replace(tzinfo=CR_TZ)
+        # Calculamos nueva fecha: +X días a las 6:00 PM
+        new_expire_dt = datetime.combine((base_date + timedelta(days=days)).date(), time(18, 0, 0)).replace(tzinfo=CR_TZ)
         
-        data['expires'] = new_expire.isoformat()
-        data['enabled'] = True
+        users[username]['expires'] = new_expire_dt.isoformat()
+        users[username]['enabled'] = True
         
-        if save_users({username: data}, full_database=users):
-            return True, "Días sumados", new_expire
+        # save_users se encarga de aplicar el +1 para Linux internamente
+        if save_users({username: users[username]}, full_database=users):
+            return True, "Renovación exitosa", new_expire_dt
+        
+        return False, "Error al guardar cambios", None
     except Exception as e:
-        return False, str(e), None
+        return False, f"Error: {str(e)}", None
 
 def ejecutar_reinicio_dias(username, days):
-    """REINICIA la cuenta: Hoy + X días"""
     users = load_users()
-    if username not in users: return False, "No existe", None
-    
+    if username not in users:
+        return False, "Usuario no encontrado", None
+
     try:
         now = datetime.now(CR_TZ)
+        # Reiniciar: Hoy + X días a las 6:00 PM
         new_date = (now.date() + timedelta(days=days))
-        new_expire = datetime.combine(new_date, time(18, 0, 0)).replace(tzinfo=CR_TZ)
+        new_expire_dt = datetime.combine(new_date, time(18, 0, 0)).replace(tzinfo=CR_TZ)
         
-        users[username]['expires'] = new_expire.isoformat()
+        users[username]['expires'] = new_expire_dt.isoformat()
         users[username]['enabled'] = True
         
         if save_users({username: users[username]}, full_database=users):
-            return True, "Días reiniciados", new_expire
+            return True, "Reinicio exitoso", new_expire_dt
+        return False, "Error al guardar", None
     except Exception as e:
-        return False, str(e), None
-
+        return False, f"Error: {str(e)}", None
+    
 def editar_usuario():
     clear_screen()
     print_banner()
@@ -321,29 +328,40 @@ def ejecutar_borrado_fisico(username, users_db=None):
     Borra en Linux (pkill + userdel) y actualiza el diccionario/JSON.
     """
     try:
-        # 1. Expulsar al usuario y matar procesos
+        # 1. Expulsar al usuario y matar procesos (Desconexión inmediata)
         subprocess.run(['pkill', '-9', '-u', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
         # 2. Borrar de Linux (fuerza -f y borra home -r)
         subprocess.run(['userdel', '-f', '-r', username], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         # 3. Gestión del JSON
         if users_db is not None:
-            # Si estamos en un proceso masivo, borramos del diccionario que nos pasaron
+            # Si viene de un proceso masivo (ej: una purga automática)
             if username in users_db:
                 del users_db[username]
             return True, "Removido"
         else:
-            # Borrado individual: Cargar, borrar y guardar
+            # Borrado individual desde el Menú o API
             db = load_users()
             if username in db:
                 del db[username]
-                save_users(db)
+                
+                # --- AQUÍ ESTÁ EL CAMBIO ---
+                # En lugar de usar save_users(), guardamos el JSON directamente.
+                # Porque el usuario YA fue borrado de Linux en el paso 2.
+                import os, tempfile, shutil
+                temp_fd, temp_path = tempfile.mkstemp(dir=str(CONFIG_DIR), text=True)
+                with os.fdopen(temp_fd, 'w') as f:
+                    json.dump(db, f, indent=4)
+                shutil.move(temp_path, str(USERS_FILE))
+                # ---------------------------
+
                 return True, "Usuario purgado correctamente"
             return False, "Usuario no encontrado en la base de datos"
             
     except Exception as e:
         return False, f"Error crítico: {str(e)}"
-    
+     
 def borrar_usuario_especifico():
     """Opción 1: Borrar un solo usuario por nombre"""
     print(f"\n {Color.CYAN}--- BORRAR USUARIO ESPECÍFICO ---{Color.END}")

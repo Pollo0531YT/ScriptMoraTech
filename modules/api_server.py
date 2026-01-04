@@ -215,94 +215,69 @@ def api_agregar_token():
 @app.route('/api/renovar', methods=['POST'])
 @require_auth
 def api_renovar():
-    """Renovar usuario - Registra la activación y usa lógica centralizada"""
     try:
         data = request.get_json()
         username = data.get('user')
-        days = data.get('dias', 0)
+        days = int(data.get('dias', 0))
         referencia = data.get('referencia', '')
         origen = data.get('origen', 'api') 
 
         if not username:
-            log_api_request('/api/renovar', data, 'Missing user')
-            # Registramos el fallo por falta de usuario
-            registrar_activacion('renovar', 'unknown', 'unknown', days, referencia, origen, False, 'Usuario no especificado')
             return jsonify({'error': 'user requerido'}), 400
 
-        # LLAMADA A LA LÓGICA ÚNICA (users.py)
-        success, message, new_date = ejecutar_renovacion_dias(username, days, referencia, origen)
+        # Llamada a la lógica centralizada
+        success, message, new_date = ejecutar_renovacion_dias(username, days)
 
         if success:
-            # ✅ REGISTRO DE ACTIVACIÓN EXITOSA (Fundamental para tus ventas)
+            # --- CORRECCIÓN DE CÁLCULO DE DÍAS RESTANTES ---
+            now_cr = datetime.now(CR_TZ)
+            # Calculamos la diferencia real entre la nueva fecha y "ahora" en CR
+            diff = new_date - now_cr
+            total_days = diff.days if diff.days >= 0 else 0
+
             registrar_activacion('renovar', username, username, days, referencia, origen, True)
             
-            total_days = (new_date - datetime.now()).days
-            result = {
+            return jsonify({
                 'success': True,
                 'user': username,
                 'dias_sumados': days,
-                'dias_totales': total_days,
+                'dias_totales': total_days, # Días reales restantes en CR
                 'expira': new_date.isoformat()
-            }
-            log_api_request('/api/renovar', data, 'OK')
-            return jsonify(result), 200
+            }), 200
         else:
-            # ✅ REGISTRO DE FALLO (ej: usuario no existe)
             registrar_activacion('renovar', username, username, days, referencia, origen, False, message)
-            log_api_request('/api/renovar', data, f'Failed: {message}')
             return jsonify({'error': message}), 404
 
     except Exception as e:
-        # ✅ REGISTRO DE ERROR CRÍTICO DEL SISTEMA
-        registrar_activacion('renovar', 
-                           username if 'username' in locals() else 'unknown', 
-                           username if 'username' in locals() else 'unknown', 
-                           days if 'days' in locals() else 0, 
-                           referencia if 'referencia' in locals() else '', 
-                           origen if 'origen' in locals() else 'api', 
-                           False, str(e))
-        log_api_request('/api/renovar', data, f'Error: {e}')
         return jsonify({'error': str(e)}), 500
-    
-# MEJORADO
+
 @app.route('/api/reiniciar', methods=['POST'])
 @require_auth
 def api_reiniciar():
-    """Reiniciar días de un usuario y registrar la operación"""
     try:
         data = request.get_json()
         username = data.get('user')
-        days = data.get('dias', 0)
-        referencia = data.get('referencia', 'RESET')
-        origen = data.get('origen', 'api')
+        days = int(data.get('dias', 0))
         
         if not username:
-            registrar_activacion('reiniciar', 'unknown', 'unknown', days, referencia, origen, False, 'Usuario requerido')
             return jsonify({'error': 'user requerido'}), 400
         
-        # LLAMADA A LA FUNCIÓN MAESTRA
         success, message, new_date = ejecutar_reinicio_dias(username, days)
         
         if success:
-            # ✅ AHORA SÍ SE REGISTRA
-            registrar_activacion('reiniciar', username, username, days, referencia, origen, True)
-            
-            result = {
+            registrar_activacion('reiniciar', username, username, days, 'RESET', 'api', True)
+            return jsonify({
                 'success': True,
                 'user': username,
                 'dias_nuevos': days,
-                'expira': new_date.isoformat() if new_date else None
-            }
-            log_api_request('/api/reiniciar', data, 'OK')
-            return jsonify(result), 200
+                'expira': new_date.isoformat()
+            }), 200
         else:
-            registrar_activacion('reiniciar', username, username, days, referencia, origen, False, message)
             return jsonify({'error': message}), 404
             
     except Exception as e:
-        log_api_request('/api/reiniciar', data, f'Error: {e}')
         return jsonify({'error': str(e)}), 500
-    
+       
 # MEJORADO
 @app.route('/api/borrar', methods=['POST'])
 @require_auth
