@@ -119,21 +119,20 @@ def api_vps_add():
     
     return jsonify({'success': True, 'vps': nueva_vps}), 200
 
-# ENDPOINT EXCLUSIVO PARA EL BOT (SIN LOGIN DE NAVEGADOR)
-@app.route('/api/bot-gestionar', methods=['POST'])
-def api_bot_gestionar():
-    # Verificación manual rápida de la Key
-    key = request.headers.get('X-Auth-Key')
-    if not key or key != SECRET_KEY:
-        return jsonify({'error': 'Unauthorized'}), 401
-    
-    # Si la key es correcta, llama a la función interna
-    return api_gestionar_token()
 
 # MEJORADO + full para recibir de todo lado
 @app.route('/api/gestionar-token', methods=['POST'])
-@require_auth
 def api_gestionar_token():
+
+    # --- NUEVA SEGURIDAD HÍBRIDA ---
+    key = request.headers.get('X-Auth-Key')
+    is_authenticated = session.get('authenticated')
+
+    # Si no tiene Key Y no está logueado en la web -> Bloquear
+    if not (key == SECRET_KEY or is_authenticated):
+        return jsonify({'error': 'Acceso denegado'}), 401
+    # -------------------------------
+    
     data = request.get_json() or {}
     nombre = data.get('nombre')
     token = data.get('token')
@@ -426,6 +425,23 @@ def api_sync_all():
     
     return jsonify(resultados), 200
 
+
+# ==================== ENDPOINT PARA BOT Y CURL (SIN REDIRECT) ====================
+
+@app.route('/api/bot-gestionar', methods=['POST'])
+def api_bot_gestionar():
+    """
+    Ruta especial para el Bot y CURL que no requiere sesión de navegador.
+    Valida mediante el header X-Auth-Key.
+    """
+    # 1. Validar la llave de seguridad
+    key = request.headers.get('X-Auth-Key')
+    if not key or key != SECRET_KEY:
+        return jsonify({'error': 'No autorizado - Key incorrecta'}), 401
+
+    # 2. Si la llave es correcta, llamamos a la lógica de gestionar_token
+    # Nota: No usamos el decorador aquí, llamamos directamente a la función interna
+    return api_gestionar_token()
 
 if __name__ == '__main__':
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 9100
