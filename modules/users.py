@@ -457,7 +457,6 @@ def borrar_todos():
     
     if confirm == "CONFIRMAR":
         users = load_users()
-        # Filtrar para no contar al admin
         a_borrar = [u for u in users.keys() if u != "admin"]
         total = len(a_borrar)
         
@@ -467,23 +466,26 @@ def borrar_todos():
             print(f"\n {Color.CYAN}Iniciando formateo total...{Color.END}")
             
             for i, username in enumerate(a_borrar, 1):
-                # Efecto visual similar a tu restore_online
+                # Usamos \r para sobreescribir la misma línea
+                # Agregamos espacios al final para limpiar nombres largos anteriores
                 print(f"\r {Color.RED}Eliminando: {Color.WHITE}{username[:15]:<15}{Color.END} ({i}/{total})", end="", flush=True)
                 
-                # Borrado físico (Linux + procesos)
+                # Ejecutamos el borrado físico (Linux + JSON local)
                 ejecutar_borrado_fisico(username, users)
-                time.sleep(0.05)
+                
+                # Usamos la librería time correctamente
+                time.sleep(0.02) 
 
-            # Guardamos el JSON que ahora solo tiene al admin
+            # Guardamos el JSON final que ahora solo tiene al admin
             save_users({}, full_database=users)
             
             print(f"\n\n {Color.GREEN}✓ SERVIDOR RESETEADO: {total} usuarios eliminados.{Color.END}")
             moratech.log_action("admin", "RESET TOTAL de base de datos")
     else:
-        print(f"\n {Color.GRAY}Operación cancelada por el usuario.{Color.END}")
+        print(f"\n {Color.GRAY}Operación cancelada.{Color.END}")
         
     input(f"\n {Color.CYAN}Presiona Enter para continuar...{Color.END}")
-    
+     
 #ENCARGADO DE MOSTRAR USUARIOS REGISTRADOS O INFO EXACTA
 def mostrar_users_registrados():
     """Mostrar usuarios registrados con diseño jerárquico y contador final"""
