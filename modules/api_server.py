@@ -282,40 +282,47 @@ def api_reiniciar():
 @app.route('/api/borrar', methods=['POST'])
 @require_auth
 def api_borrar():
-    """Eliminar usuario y registrar quién realizó la purga"""
+    """Eliminar usuario vía API"""
     try:
         data = request.get_json()
+        
         if not data:
             return jsonify({'error': 'No se enviaron datos'}), 400
         
         username = data.get('user')
-        origen = data.get('origen', 'api')
         
         if not username:
+            log_api_request('/api/borrar', data, 'Missing user')
             return jsonify({'error': 'user requerido'}), 400
         
-        # LLAMADA A LA FUNCIÓN ÚNICA
+        # LLAMAR A LA FUNCIÓN MAESTRA
         success, message = ejecutar_borrado_fisico(username)
-
+        
         if success:
-            # ✅ REGISTRO DE BORRADO
-            registrar_activacion('borrar', username, username, 0, 'SISTEMA', origen, True)
+            # Registrar en activaciones
+            registrar_activacion('borrar', username, username, 0, '', 'api', True)
             log_api_request('/api/borrar', data, f'OK - {message}')
+            
             return jsonify({
                 'success': True,
                 'user': username,
-                'message': message
+                'message': message,
+                'purged': True
             }), 200
         else:
-            # ❌ REGISTRO DE FALLO REAL
-            registrar_activacion('borrar', username, username, 0, 'FALLO', origen, False, message)
+            # Registrar fallo
+            registrar_activacion('borrar', username, username, 0, '', 'api', False, message)
             log_api_request('/api/borrar', data, f'ERROR - {message}')
-            return jsonify({'error': message}), 404
-           
+            
+            return jsonify({
+                'success': False,
+                'error': message
+            }), 404
+        
     except Exception as e:
-        log_api_request('/api/borrar', data, f'CRITICAL ERROR: {e}')
-        return jsonify({'error': f"Error interno: {str(e)}"}), 500
-    
+        log_api_request('/api/borrar', data if 'data' in locals() else {}, f'Exception: {e}')
+        return jsonify({'error': f'Error interno: {str(e)}'}), 500
+      
 #trae las activaciones
 @app.route('/api/sync-activaciones', methods=['GET'])
 @require_auth
