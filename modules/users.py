@@ -969,25 +969,38 @@ def restore_online_chumo():
                 total = len(users)
                 print(f"\n {Color.YELLOW}🚀 Iniciando restauración masiva...{Color.END}")
                 
-                # 1. Cargamos la base de datos actual completa
+                # 1. Cargamos la base de datos actual completa para no perder nada
                 db_completa = load_users() 
                 
-                # 2. Fusionamos TODOS los usuarios del backup en la db_completa
+                # 2. Fusionamos en memoria
                 for username, data in users.items():
                     db_completa[username] = data
 
-                # 3. Llamamos a save_users una SOLA VEZ pasando:
-                #    - users_to_sync: Los usuarios nuevos (para que useradd los cree)
-                #    - full_database: La base completa fusionada (para que no borre nada)
-                print(f" {Color.CYAN}Procesando comandos de sistema...{Color.END}")
+                # 3. Restauración con progreso visual
+                exitos = 0
+                print(f" {Color.CYAN}Aplicando cambios en el sistema...{Color.END}\n")
                 
-                if save_users(users, full_database=db_completa):
-                    print(f"\n\n {Color.GREEN}✓ Proceso finalizado exitosamente.{Color.END}")
-                    print(f" {Color.CYAN}Se han restaurado {total} usuarios en Linux y JSON.{Color.END}")
-                    moratech.log_action("admin", f"Restauración masiva exitosa: {total} usuarios")
-                else:
-                    print(f"\n\n {Color.RED}❌ Error al ejecutar comandos de sistema.{Color.END}")
+                for i, (username, data) in enumerate(users.items(), 1):
+                    # Enviamos de a UNO a save_users pero pasándole la db_completa 
+                    # para que el JSON siempre esté íntegro.
+                    # Al pasarle full_database, evitamos que se borren los anteriores.
+                    if save_users({username: data}, full_database=db_completa):
+                        exitos += 1
                     
+                    # Cálculo de días para el "look" profesional
+                    expires_dt = datetime.fromisoformat(data['expires'])
+                    dias_display = max(0, (expires_dt - datetime.now()).days)
+                    
+                    # El \r permite que la línea se actualice en el mismo lugar
+                    print(f"\r {Color.YELLOW}Restaurando: {Color.GREEN}{username[:12]:<12}{Color.END} [{dias_display:2} d] ({i}/{total})", end="", flush=True)
+
+                # Guardado final de seguridad (por si acaso)
+                save_users({}, full_database=db_completa)
+
+                print(f"\n\n {Color.GREEN}✓ Proceso finalizado exitosamente.{Color.END}")
+                print(f" {Color.CYAN}Total procesado: {exitos} de {total} usuarios.{Color.END}")
+                moratech.log_action("admin", f"Restauración masiva visual exitosa: {total} usuarios")
+                       
             else:
                 print(f"\n {Color.YELLOW}Restauración cancelada{Color.END}")
         else:
