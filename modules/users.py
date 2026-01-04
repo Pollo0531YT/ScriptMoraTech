@@ -5,7 +5,7 @@ Módulo USUARIOS  - Gestión de USUARIOS
 import time
 import subprocess
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time, timezone
 from pathlib import Path
 
 from modules.common import Color, PROTOCOLS_FILE, clear_screen, print_banner, print_line
@@ -15,6 +15,7 @@ CONFIG_DIR = Path.home() / '.moratech'
 TOKEN_CONFIG_FILE = CONFIG_DIR / 'token_config.json'
 USERS_FILE = CONFIG_DIR / 'users.json'
 
+CR_TZ = timezone(timedelta(hours=-6))
 
 def control_usuarios_menu():
     """Menú de control de usuarios"""
@@ -145,60 +146,52 @@ def add_token_user():
 
     input(f"\n{Color.CYAN}Presiona Enter...{Color.END}")
 
-def ejecutar_creacion_usuario(username, password, dias, user_type="ssh", max_conn=1, display_name=None):
+def ejecutar_creacion_usuario(username, password, days, user_type="ssh",
+                              max_conn=1, display_name=None):
     """
-    UNIFICADA: Reemplaza la lógica de add_ssh_user y add_token_user para la API.
-    Mantiene la compatibilidad total con tu sistema de archivos y Linux.
+    Función central para crear usuario en Linux y en JSON.
+    Usa CR_TZ (timezone -06:00). Si 'days' no es convertible -> devuelve error.
+    Retorna: (success:bool, msg:str, expires_iso_or_None)
     """
-    import subprocess
-    from datetime import datetime, timedelta
-    
     users = load_users()
-    
-    # 1. Validación de existencia
-    if username in users:
-        return False, "El usuario o token ya existe", None
 
+    # validación básica de username
+    if not username or username in users:
+        return False, "Usuario inválido o ya existente", None
+
+    # validar 'days' (no crear ilimitado)
     try:
-        # 2. Lógica de Expiración (Tu lógica original de las 6:00 PM)
-        try:
-            days = int(dias)
-            expire_date = (datetime.now().date() + timedelta(days=days))
-            # Combinamos la fecha con las 18:00:00 (6 PM)
-            expires = datetime.combine(expire_date, datetime.min.time()).replace(
-                hour=18, minute=0, second=0
-            ).isoformat()
-        except Exception:
-            expires = None # Para SSH si falla el cálculo
+        days_int = int(days)
+        if days_int < 0:
+            raise ValueError("Días negativo")
+    except Exception:
+        return False, "Valor de días inválido", None
 
-        # 3. Construcción del Diccionario (IDÉNTICO a tus funciones manuales)
-        new_user_data = {
-            "password": password,
-            "role": "user",
-            "type": user_type,
-            "created": datetime.now().isoformat(),
-            "expires": expires,
-            "max_connections": int(max_conn),
-            "enabled": True
-        }
+    # ahora con timezone CR_TZ
+    now = datetime.now(CR_TZ)
+    expire_date = (now.date() + timedelta(days=days_int))
+    expires_dt = datetime.combine(expire_date, time(18, 0, 0)).replace(tzinfo=CR_TZ)
+    expires_iso = expires_dt.isoformat()
 
-        # Si es token, agregamos el display_name que pide tu script
-        if user_type == "token":
-            new_user_data["display_name"] = display_name if display_name else username
-            new_user_data["max_connections"] = 1 # Tokens siempre son 1 conexión
+    new_user_data = {
+        "password": password,
+        "role": "user",
+        "type": user_type,
+        "created": now.isoformat(),
+        "expires": expires_iso,
+        "max_connections": int(max_conn),
+        "enabled": True
+    }
 
-        # 4. Guardado y Ejecución en Linux
-        # Llamamos a TU función save_users que ya hace el useradd y chpasswd
-        users[username] = new_user_data
-        
-        if save_users({username: new_user_data}, full_database=users):
-            return True, "Creado exitosamente", expires
-        else:
-            return False, "Error al guardar en base de datos o Linux", None
+    if user_type == "token" and display_name:
+        new_user_data["display_name"] = display_name
 
-    except Exception as e:
-        return False, f"Error crítico: {str(e)}", None
-    
+    # Guardado: crear/actualizar usuario en Linux y persistir JSON
+    if save_users({username: new_user_data}, full_database=users):
+        return True, "Creado correctamente", expires_iso
+
+    return False, "Error al guardar en base de datos", None
+   
 def editar_usuario():
     """Editar o renovar usuario - Optimización Instantánea"""
     clear_screen()

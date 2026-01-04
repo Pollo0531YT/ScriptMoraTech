@@ -6,13 +6,15 @@ Llama a funciones de users.py para evitar duplicación
 import json
 import sys
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, time, timezone
 from flask import Flask, request, jsonify, render_template, session, redirect
 from pathlib import Path
 from functools import wraps
 
 from activaciones import registrar_activacion, obtener_activaciones, obtener_estadisticas
 from users import ejecutar_borrado_fisico, ejecutar_creacion_usuario, ejecutar_reinicio_dias, ejecutar_renovacion_dias
+
+CR_TZ = timezone(timedelta(hours=-6))  # Zona horaria Costa Rica -06:00
 
 # Agregar path de módulos
 sys.path.insert(0, '/usr/local/lib/moratech')
@@ -36,8 +38,8 @@ CONFIG_DIR = Path.home() / '.moratech'
 API_LOG_FILE = CONFIG_DIR / 'api.log'
 
 def log_api_request(endpoint, data, result):
-    """Registrar petición API"""
-    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    """Registrar petición API con timestamp en CR_TZ."""
+    timestamp = _now_iso_cr()
     log_entry = {
         'timestamp': timestamp,
         'endpoint': endpoint,
@@ -45,9 +47,16 @@ def log_api_request(endpoint, data, result):
         'result': result,
         'auth': 'valid' if request.headers.get('X-Auth-Key') == SECRET_KEY else 'invalid'
     }
-    
+
+    CONFIG_DIR.mkdir(exist_ok=True)
     with open(API_LOG_FILE, 'a') as f:
         f.write(json.dumps(log_entry) + "\n")
+
+def _now_iso_cr():
+    try:
+        return datetime.now(CR_TZ).isoformat()
+    except Exception:
+        return datetime.now().isoformat()
 
 def require_auth(f):
     """Decorator para validar clave secreta"""
