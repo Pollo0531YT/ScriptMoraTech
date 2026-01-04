@@ -216,38 +216,6 @@ def api_gestionar_token():
     }), 200
 
 
-#check tken
-def check_token_status(vps_url_checkuser, token):
-    """
-    Consultar CheckUser para saber si el token existe
-    Returns:
-        - 'exists' si devuelve fecha (ej: "11012026")
-        - 'not_exist' si devuelve "Not exist"
-        - 'error' si no puede conectar
-    """
-    try:
-        response = requests.post(
-            vps_url_checkuser,
-            json={'user': token},
-            timeout=5
-        )
-        
-        if response.status_code == 200:
-            result = response.text.strip()
-            
-            # CheckUser devuelve texto plano, no JSON
-            if result == "Not exist":
-                return 'not_exist'
-            elif len(result) == 8 and result.isdigit():  # Formato ddmmyyyy
-                return 'exists'
-            else:
-                return 'error'
-        else:
-            return 'error'
-    
-    except Exception as e:
-        return 'error'
-
 @app.route('/api/borrar-token', methods=['POST'])
 @require_auth
 def api_borrar_token():
@@ -347,6 +315,38 @@ def api_borrar_token():
         'total': len(resultados),
         'exitosos': len([r for r in resultados if r.get('success')])
     }), 200
+
+#check tken
+def check_token_status(vps_url_checkuser, token):
+    """
+    Consultar CheckUser para saber si el token existe
+    Returns:
+        - 'exists' si devuelve fecha (ej: "11012026")
+        - 'not_exist' si devuelve "Not exist"
+        - 'error' si no puede conectar
+    """
+    try:
+        response = requests.post(
+            vps_url_checkuser,
+            json={'user': token},
+            timeout=5
+        )
+        
+        if response.status_code == 200:
+            result = response.text.strip()
+            
+            # CheckUser devuelve texto plano, no JSON
+            if result == "Not exist":
+                return 'not_exist'
+            elif len(result) == 8 and result.isdigit():  # Formato ddmmyyyy
+                return 'exists'
+            else:
+                return 'error'
+        else:
+            return 'error'
+    
+    except Exception as e:
+        return 'error'
 
 
 #funciones que parecieran son directamente del panel

@@ -55,24 +55,20 @@ def _now_iso_cr():
     except Exception:
         return datetime.now().isoformat()
 
-def require_auth(f):
-    """Decorator para validar clave secreta"""
+def require_auth_hybrid(f):
+    """Decorator para validar X-Auth-Key O sesión web"""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        auth_key = request.headers.get('X-Auth-Key')
+        key = request.headers.get('X-Auth-Key')
+        is_authenticated = session.get('authenticated')
         
-        if not auth_key:
-            log_api_request(request.path, {}, "Missing Auth Key")
-            return jsonify({'error': 'Auth Key required'}), 401
-        
-        if auth_key != SECRET_KEY:
-            log_api_request(request.path, {}, "Invalid Auth Key")
-            return jsonify({'error': 'Invalid Auth Key'}), 401
+        if not (key == SECRET_KEY or is_authenticated):
+            log_api_request(request.path, {}, "Unauthorized")
+            return jsonify({'error': 'No autorizado'}), 401
         
         return f(*args, **kwargs)
     
     return decorated_function
-
 # ==================== ENDPOINTS ====================
 
 @app.route('/')
@@ -80,7 +76,7 @@ def home():
     return "MORATECH API - Sistema de gestión de usuarios", 200
 
 @app.route('/api/status', methods=['GET'])
-@require_auth
+@require_auth_hybrid
 def api_status():
     """Estado del sistema"""
     users = load_users()
@@ -96,7 +92,7 @@ def api_status():
 
 #MEJORADO
 @app.route('/api/agregar', methods=['POST'])
-@require_auth
+@require_auth_hybrid
 def api_agregar_ssh():
     try:
         data = request.get_json()
@@ -137,7 +133,7 @@ def api_agregar_ssh():
     
 #MEJORADO
 @app.route('/api/token', methods=['POST'])
-@require_auth
+@require_auth_hybrid
 def api_agregar_token():
     try:
         data = request.get_json()
@@ -183,7 +179,7 @@ def api_agregar_token():
        
 # MEJORADO
 @app.route('/api/renovar', methods=['POST'])
-@require_auth
+@require_auth_hybrid
 def api_renovar():
     try:
         data = request.get_json()
@@ -225,7 +221,7 @@ def api_renovar():
 
 # MEJORADO
 @app.route('/api/reiniciar', methods=['POST'])
-@require_auth
+@require_auth_hybrid
 def api_reiniciar():
     try:
         data = request.get_json()
@@ -257,9 +253,10 @@ def api_reiniciar():
          
 # MEJORADO
 @app.route('/api/borrar', methods=['POST'])
-@require_auth
+@require_auth_hybrid
 def api_borrar():
     """Eliminar usuario vía API"""
+
     try:
         data = request.get_json()
         
@@ -302,7 +299,7 @@ def api_borrar():
       
 #trae las activaciones
 @app.route('/api/sync-activaciones', methods=['GET'])
-@require_auth
+@require_auth_hybrid
 def api_sync_activaciones():
     """Endpoint para sincronización - Devuelve TODAS las activaciones"""
     # Leer nombre de VPS desde archivo
@@ -332,7 +329,7 @@ def api_sync_activaciones():
 
 #LIMPIAR LAS ACTICACIONES CON ADVERTENCIA
 @app.route('/api/limpiar-activaciones', methods=['POST'])
-@require_auth
+@require_auth_hybrid
 def api_limpiar_activaciones():
     """Limpiar todas las activaciones - ADVERTENCIA: Borra todo el historial"""
     try:
@@ -390,7 +387,7 @@ def login():
 
 
 @app.route('/api/activaciones', methods=['GET'])
-@require_auth
+@require_auth_hybrid
 def api_activaciones():
     """Obtener lista de activaciones con filtros"""
     origen = request.args.get('origen', '')
@@ -408,7 +405,7 @@ def api_activaciones():
 
 
 @app.route('/api/estadisticas', methods=['GET'])
-@require_auth
+@require_auth_hybrid
 def api_estadisticas():
     """Obtener estadísticas de activaciones"""
     stats = obtener_estadisticas()
