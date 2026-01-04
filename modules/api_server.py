@@ -329,6 +329,41 @@ def api_sync_activaciones():
         'activaciones': activaciones
     }), 200
 
+#LIMPIAR LAS ACTICACIONES CON ADVERTENCIA
+@app.route('/api/limpiar-activaciones', methods=['POST'])
+@require_auth
+def api_limpiar_activaciones():
+    """Limpiar todas las activaciones - ADVERTENCIA: Borra todo el historial"""
+    try:
+        activaciones_file = CONFIG_DIR / 'activaciones.json'
+        
+        # Verificar cuántas activaciones hay
+        if activaciones_file.exists():
+            with open(activaciones_file, 'r') as f:
+                data = json.load(f)
+                total = len(data.get('activaciones', []))
+        else:
+            total = 0
+        
+        # Vaciar archivo
+        with open(activaciones_file, 'w') as f:
+            json.dump({'activaciones': []}, f, indent=4)
+        
+        # También limpiar api.log
+        api_log = CONFIG_DIR / 'api.log'
+        if api_log.exists():
+            with open(api_log, 'w') as f:
+                f.write('')
+        
+        return jsonify({
+            'success': True,
+            'message': f'Se eliminaron {total} activaciones',
+            'total_eliminadas': total
+        }), 200
+    
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 # para web
 @app.route('/dashboard')
 def dashboard():

@@ -115,12 +115,29 @@
             color: #999;
             font-size: 1.2em;
         }
+
+        /**LIMPIEZA*/
+        .btn-danger {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            font-size: 14px;
+        }
+        .btn-danger:hover { opacity: 0.9; }
+
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🚀 MORATECH Dashboard</h1>
-        <p class="subtitle">Registro de Activaciones del Sistema</p>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <p class="subtitle" style="margin: 0;">Registro de Activaciones del Sistema</p>
+            <button class="btn-danger" onclick="limpiarActivaciones()">🗑️ Limpiar Historial</button>
+        </div>
         
         <div class="stats" id="stats"></div>
         
@@ -193,8 +210,8 @@
                 </div>
             `;
             document.getElementById('stats').innerHTML = html;
-        }
-        
+        } 
+
         function mostrarTabla() {
             if (activaciones.length === 0) {
                 document.getElementById('tabla').innerHTML = '<div class="no-data">📭 No hay activaciones registradas</div>';
@@ -225,6 +242,39 @@
             
             html += '</tbody></table>';
             document.getElementById('tabla').innerHTML = html;
+        }
+
+                /**ELIMINAR ACTIVACIONES*/
+        async function limpiarActivaciones() {
+            // Confirmación 1
+            if (!confirm('⚠️ ADVERTENCIA\n\nEsto eliminará TODAS las activaciones del historial.\n\n¿Estás seguro?')) {
+                return;
+            }
+            
+            // Confirmación 2 (doble seguridad)
+            const confirmText = prompt('Escribe "CONFIRMAR" para eliminar todas las activaciones:');
+            if (confirmText !== 'CONFIRMAR') {
+                alert('Operación cancelada');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/limpiar-activaciones', {
+                    method: 'POST',
+                    headers: { 'X-Auth-Key': 'moratech-key' }
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    alert(`✅ Éxito\n\n${data.message}`);
+                    cargarDatos(); // Recargar dashboard vacío
+                } else {
+                    alert('❌ Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('❌ Error de conexión: ' + error);
+            }
         }
         
         function filtrar() {
