@@ -1124,7 +1124,7 @@ def restore_online_chumo_eliminar():
             if 'TOKEN' in line and len(parts) >= 5:
                 # TOKEN: {token}:{pass}:TOKEN:{dias}:{nombre}
                 password = token_config['token_password']
-                days = int(parts[3])
+                days = max(0, int(parts[3]) - 1)
                 display_name = parts[4]
                 user_type = 'token'
                 max_conn = 1
@@ -1132,7 +1132,7 @@ def restore_online_chumo_eliminar():
                 # SSH: {nombre}:{pass}:{conn}:{dias}
                 password = parts[1]
                 max_conn = int(parts[2])
-                days = int(parts[3])
+                days = max(0, int(parts[3]) - 1)
                 display_name = None
                 user_type = 'ssh'
             
@@ -1249,7 +1249,7 @@ def restore_online_chumo_fusionar():
             if 'TOKEN' in line and len(parts) >= 5:
                 usuarios_backup[username] = {
                     'password': token_config['token_password'],
-                    'days': int(parts[3]),
+                    'days': max(0, int(parts[3]) - 1),
                     'display_name': parts[4],
                     'user_type': 'token',
                     'max_conn': 1
@@ -1257,7 +1257,7 @@ def restore_online_chumo_fusionar():
             else:
                 usuarios_backup[username] = {
                     'password': parts[1],
-                    'days': int(parts[3]),
+                    'days': max(0, int(parts[3]) - 1),
                     'display_name': None,
                     'user_type': 'ssh',
                     'max_conn': int(parts[2])
@@ -1448,14 +1448,14 @@ def restore_local_chumo_eliminar():
             # Parsear
             if 'TOKEN' in line and len(parts) >= 5:
                 password = token_config['token_password']
-                days = int(parts[3])
+                days = max(0, int(parts[3]) - 1)
                 display_name = parts[4]
                 user_type = 'token'
                 max_conn = 1
             else:
                 password = parts[1]
                 max_conn = int(parts[2])
-                days = int(parts[3])
+                days = max(0, int(parts[3]) - 1)
                 display_name = None
                 user_type = 'ssh'
             
@@ -1555,7 +1555,7 @@ def restore_local_chumo_fusionar():
             if 'TOKEN' in line and len(parts) >= 5:
                 usuarios_backup[username] = {
                     'password': token_config['token_password'],
-                    'days': int(parts[3]),
+                    'days': max(0, int(parts[3]) - 1),
                     'display_name': parts[4],
                     'user_type': 'token',
                     'max_conn': 1
@@ -1563,7 +1563,7 @@ def restore_local_chumo_fusionar():
             else:
                 usuarios_backup[username] = {
                     'password': parts[1],
-                    'days': int(parts[3]),
+                    'days': max(0, int(parts[3]) - 1),
                     'display_name': None,
                     'user_type': 'ssh',
                     'max_conn': int(parts[2])
