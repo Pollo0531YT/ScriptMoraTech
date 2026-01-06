@@ -355,7 +355,7 @@
                 const response = await fetch('/api/borrar-token', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({token, vps_ids})
+                    body: JSON.stringify({token, vps_ids, origen: "web"})
                 });
                 
                 const data = await response.json();

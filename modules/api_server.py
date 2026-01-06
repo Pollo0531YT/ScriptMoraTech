@@ -264,6 +264,7 @@ def api_borrar():
             return jsonify({'error': 'No se enviaron datos'}), 400
         
         username = data.get('user')
+        origen = data.get('origen', )
         
         if not username:
             log_api_request('/api/borrar', data, 'Missing user')
@@ -274,7 +275,7 @@ def api_borrar():
         
         if success:
             # Registrar en activaciones
-            registrar_activacion('borrar', username, username, 0, '', 'api', True)
+            registrar_activacion('borrar', username, username, 0, 'Borrar-user', origen, True)
             log_api_request('/api/borrar', data, f'OK - {message}')
             
             return jsonify({
@@ -285,7 +286,7 @@ def api_borrar():
             }), 200
         else:
             # Registrar fallo
-            registrar_activacion('borrar', username, username, 0, '', 'api', False, message)
+            registrar_activacion('borrar', username, username, 0, 'Borrar-user', origen, False, message)
             log_api_request('/api/borrar', data, f'ERROR - {message}')
             
             return jsonify({
