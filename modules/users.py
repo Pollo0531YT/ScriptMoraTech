@@ -881,9 +881,14 @@ def menu_backup():
         
         print_line()
         print(f" {Color.GREEN}[1]{Color.END} ➮ Respaldar usuarios [EN LÍNEA - CHUMO]")
-        print(f" {Color.GREEN}[2]{Color.END} ➮ Restaurar usuarios [EN LÍNEA - CHUMO]")
-        print(f" {Color.GREEN}[3]{Color.END} ➮ Restaurar usuarios [LOCALMENTE - CHUMO]")
-        print(f" {Color.GREEN}[4]{Color.END} ➮ Ver backups locales")
+        print_line()
+        print(f" {Color.GREEN}[2]{Color.END} ➮ Restaurar usuarios [EN LÍNEA - CHUMO - BORRON]")
+        print(f" {Color.GREEN}[3]{Color.END} ➮ Restaurar usuarios [LOCALMENTE - CHUMO - BORRON]")
+        print_line()
+        print(f" {Color.GREEN}[4]{Color.END} ➮ Restaurar usuarios [EN LÍNEA - CHUMO - FUSIONAR]")
+        print(f" {Color.GREEN}[5]{Color.END} ➮ Restaurar usuarios [LOCALMENTE - CHUMO - FUSIONAR]")
+        print_line()
+        print(f" {Color.GREEN}[6]{Color.END} ➮ Ver backups locales")
         print_line()
         print(f" {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}Volver{Color.END}")
         print_line()
@@ -893,10 +898,14 @@ def menu_backup():
         if choice == '1':
             backup_online_chumo()
         elif choice == '2':
-            restore_online_chumo()
+            restore_online_chumo_eliminar()
         elif choice == '3':
-            restore_local_chumo()
+            restore_local_chumo_eliminar()
         elif choice == '4':
+            restore_online_chumo_fusionar()
+        elif choice == '5':
+            restore_local_chumo_fusionar()
+        elif choice == '6':
             list_backups_chumo()
         elif choice == '0':
             break
@@ -1020,7 +1029,7 @@ def backup_online_chumo():
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
 #RESTARACION COMPLETA BORRON Y CUENTA NUEVA"
-def restore_online_chumo():
+def restore_online_chumo_eliminar():
     """Restaurar usuarios desde servidor HTTP - BORRÓN Y CUENTA NUEVA"""
     clear_screen()
     print_banner()
@@ -1159,8 +1168,199 @@ def restore_online_chumo():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
 
+#RESTAURACION FUSIONAR BACKUP (QUEDA LA DEL BACKUP)
+def restore_online_chumo_fusionar():
+    """Restaurar usuarios desde servidor HTTP - FUSIÓN INTELIGENTE"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}FUSIONAR BACKUP EN LÍNEA{Color.END}")
+    print_line()
+    
+    # Mostrar última URL
+    try:
+        url_file = CONFIG_DIR / 'last_backup_url.txt'
+        if url_file.exists():
+            with open(url_file, 'r') as f:
+                last_url = f.read().strip()
+                print(f"\n {Color.YELLOW}Último backup:{Color.END}")
+                print(f" {Color.GRAY}{last_url}{Color.END}")
+    except:
+        pass
+    
+    backup_url = input(f"\n {Color.GREEN}Enlace del backup: {Color.END}").strip()
+    
+    if not backup_url:
+        print(f" {Color.YELLOW}Operación cancelada{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    # ⚠️ EXPLICACIÓN DE FUSIÓN
+    print(f"\n {Color.CYAN}ℹ️  MODO FUSIÓN:{Color.END}")
+    print(f" {Color.GREEN}• Actualiza días según backup (incluso si baja){Color.END}")
+    print(f" {Color.GREEN}• Crea usuarios nuevos del backup{Color.END}")
+    print(f" {Color.RED}• Elimina usuarios que NO están en el backup{Color.END}")
+    confirm = input(f"\n {Color.YELLOW}¿Continuar? (s/n): {Color.END}").strip().lower()
+    
+    if confirm != 's':
+        print(f" {Color.YELLOW}Operación cancelada{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    print(f"\n {Color.YELLOW}⏳ Descargando backup...{Color.END}", end="\r")
+    
+    try:
+        import requests
+        response = requests.get(backup_url, timeout=10)
+        
+        if response.status_code != 200:
+            print(f" {Color.RED}✗ Error descargando (HTTP {response.status_code}){Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+        
+        backup_content = response.text.strip()
+        if not backup_content:
+            print(f" {Color.RED}✗ Backup vacío{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+        
+        print(f" {Color.GREEN}✓ Descarga exitosa{Color.END}")
+        
+        # ==================== PARSEAR BACKUP ====================
+        lineas = backup_content.split('\n')
+        usuarios_backup = {}
+        
+        token_config = load_token_config()
+        if not token_config.get('token_password'):
+            token_config['token_password'] = 'default123'
+            save_token_config(token_config)
+        
+        for line in lineas:
+            line = line.strip()
+            if not line:
+                continue
+            
+            parts = line.split(':')
+            if len(parts) < 4:
+                continue
+            
+            username = parts[0]
+            
+            if 'TOKEN' in line and len(parts) >= 5:
+                usuarios_backup[username] = {
+                    'password': token_config['token_password'],
+                    'days': int(parts[3]),
+                    'display_name': parts[4],
+                    'user_type': 'token',
+                    'max_conn': 1
+                }
+            else:
+                usuarios_backup[username] = {
+                    'password': parts[1],
+                    'days': int(parts[3]),
+                    'display_name': None,
+                    'user_type': 'ssh',
+                    'max_conn': int(parts[2])
+                }
+        
+        # ==================== CARGAR USUARIOS ACTUALES ====================
+        users_actuales = load_users()
+        usuarios_sistema = {u: data for u, data in users_actuales.items() if u != "admin"}
+        
+        # ==================== CALCULAR DIFERENCIAS ====================
+        en_backup = set(usuarios_backup.keys())
+        en_sistema = set(usuarios_sistema.keys())
+        
+        a_crear = en_backup - en_sistema
+        a_actualizar = en_backup & en_sistema
+        a_eliminar = en_sistema - en_backup
+        
+        print(f"\n {Color.CYAN}📊 Análisis:{Color.END}")
+        print(f" {Color.GREEN}Crear: {len(a_crear)}{Color.END}")
+        print(f" {Color.YELLOW}Actualizar: {len(a_actualizar)}{Color.END}")
+        print(f" {Color.RED}Eliminar: {len(a_eliminar)}{Color.END}")
+        
+        confirm = input(f"\n {Color.YELLOW}¿Ejecutar fusión? (s/n): {Color.END}").strip().lower()
+        if confirm != 's':
+            print(f" {Color.YELLOW}Operación cancelada{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+        
+        # ==================== EJECUTAR FUSIÓN ====================
+        creados = 0
+        actualizados = 0
+        eliminados = 0
+        
+        # 1. CREAR NUEVOS
+        if a_crear:
+            print(f"\n {Color.GREEN}Creando usuarios nuevos...{Color.END}\n")
+            for i, username in enumerate(a_crear, 1):
+                data = usuarios_backup[username]
+                print(f"\r {Color.GREEN}Creando: {Color.WHITE}{username[:20]:<20}{Color.END} [{data['days']:2}d] ({i}/{len(a_crear)})", end="", flush=True)
+                
+                success, msg, expires = sincronizar_usuario(
+                    username=username,
+                    password=data['password'],
+                    dias=data['days'],
+                    operacion='crear',
+                    user_type=data['user_type'],
+                    max_conn=data['max_conn'],
+                    display_name=data['display_name']
+                )
+                
+                if success:
+                    creados += 1
+            print()
+        
+        # 2. ACTUALIZAR EXISTENTES
+        if a_actualizar:
+            print(f"\n {Color.YELLOW}Actualizando usuarios...{Color.END}\n")
+            for i, username in enumerate(a_actualizar, 1):
+                data = usuarios_backup[username]
+                print(f"\r {Color.YELLOW}Actualizando: {Color.WHITE}{username[:20]:<20}{Color.END} [{data['days']:2}d] ({i}/{len(a_actualizar)})", end="", flush=True)
+                
+                # Usar 'reiniciar' para sobrescribir días exactos del backup
+                success, msg, expires = sincronizar_usuario(
+                    username=username,
+                    dias=data['days'],
+                    operacion='reiniciar'
+                )
+                
+                if success:
+                    actualizados += 1
+            print()
+        
+        # 3. ELIMINAR HUÉRFANOS
+        if a_eliminar:
+            print(f"\n {Color.RED}Eliminando usuarios huérfanos...{Color.END}\n")
+            for i, username in enumerate(a_eliminar, 1):
+                print(f"\r {Color.RED}Eliminando: {Color.WHITE}{username[:20]:<20}{Color.END} ({i}/{len(a_eliminar)})", end="", flush=True)
+                ejecutar_borrado_fisico(username)
+                eliminados += 1
+            print()
+        
+        # ==================== RESUMEN ====================
+        print(f"\n {Color.GREEN}✓ Fusión completada:{Color.END}")
+        print(f" {Color.GREEN}Creados: {creados}/{len(a_crear)}{Color.END}")
+        print(f" {Color.YELLOW}Actualizados: {actualizados}/{len(a_actualizar)}{Color.END}")
+        print(f" {Color.RED}Eliminados: {eliminados}/{len(a_eliminar)}{Color.END}")
+        
+        moratech.log_action("admin", f"Fusión Online: +{creados} ~{actualizados} -{eliminados}")
+        
+        # Guardar URL
+        try:
+            with open(url_file, 'w') as f:
+                f.write(backup_url)
+        except:
+            pass
+    
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
 #RESTARACION COMPLETA BORRON Y CUENTA NUEVA"
-def restore_local_chumo():
+def restore_local_chumo_eliminar():
     """Restaurar desde backup local - BORRÓN Y CUENTA NUEVA"""
     clear_screen()
     print_banner()
@@ -1278,6 +1478,175 @@ def restore_local_chumo():
         
         print(f"\n\n {Color.GREEN}✓ Restauración completada: {exitos}/{total} usuarios{Color.END}")
         moratech.log_action("admin", f"Restore Local: {exitos} usuarios ({seleccionado.name})")
+    
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+#FUSONAR BACKUP QUEDA EL BACKUP COMO ORIGINAL
+def restore_local_chumo_fusionar():
+    """Restaurar desde backup local - FUSIÓN INTELIGENTE"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}FUSIONAR BACKUP LOCAL{Color.END}")
+    print_line()
+    
+    backup_dir = CONFIG_DIR / 'backups'
+    backups = sorted(backup_dir.glob('backup_*.txt'), reverse=True)
+    
+    if not backups:
+        print(f"\n {Color.RED}No se encontraron backups locales{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    print(f"\n {Color.CYAN}Backups disponibles:{Color.END}\n")
+    for i, b in enumerate(backups[:10], 1):
+        with open(b, 'r') as f:
+            count = sum(1 for l in f if l.strip())
+        print(f" {Color.GREEN}[{i}]{Color.END} {b.name} {Color.GRAY}({count} usuarios){Color.END}")
+    
+    print(f"\n {Color.GREEN}[0]{Color.END} Cancelar")
+    opc = input(f"\n {Color.YELLOW}Selecciona: {Color.END}").strip()
+    
+    if not opc or opc == '0':
+        return
+    
+    try:
+        seleccionado = backups[int(opc) - 1]
+    except:
+        print(f" {Color.RED}✗ Opción inválida{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    # ⚠️ EXPLICACIÓN
+    print(f"\n {Color.CYAN}ℹ️  MODO FUSIÓN:{Color.END}")
+    print(f" {Color.GREEN}• Actualiza días según backup{Color.END}")
+    print(f" {Color.GREEN}• Crea usuarios nuevos{Color.END}")
+    print(f" {Color.RED}• Elimina usuarios no presentes{Color.END}")
+    confirm = input(f"\n {Color.YELLOW}¿Continuar? (s/n): {Color.END}").strip().lower()
+    
+    if confirm != 's':
+        return
+    
+    try:
+        # Parsear backup
+        with open(seleccionado, 'r') as f:
+            lineas = f.readlines()
+        
+        usuarios_backup = {}
+        token_config = load_token_config()
+        if not token_config.get('token_password'):
+            token_config['token_password'] = 'default123'
+            save_token_config(token_config)
+        
+        for line in lineas:
+            line = line.strip()
+            if not line:
+                continue
+            
+            parts = line.split(':')
+            if len(parts) < 4:
+                continue
+            
+            username = parts[0]
+            
+            if 'TOKEN' in line and len(parts) >= 5:
+                usuarios_backup[username] = {
+                    'password': token_config['token_password'],
+                    'days': int(parts[3]),
+                    'display_name': parts[4],
+                    'user_type': 'token',
+                    'max_conn': 1
+                }
+            else:
+                usuarios_backup[username] = {
+                    'password': parts[1],
+                    'days': int(parts[3]),
+                    'display_name': None,
+                    'user_type': 'ssh',
+                    'max_conn': int(parts[2])
+                }
+        
+        # Analizar diferencias
+        users_actuales = load_users()
+        usuarios_sistema = {u: data for u, data in users_actuales.items() if u != "admin"}
+        
+        en_backup = set(usuarios_backup.keys())
+        en_sistema = set(usuarios_sistema.keys())
+        
+        a_crear = en_backup - en_sistema
+        a_actualizar = en_backup & en_sistema
+        a_eliminar = en_sistema - en_backup
+        
+        print(f"\n {Color.CYAN}📊 Análisis:{Color.END}")
+        print(f" {Color.GREEN}Crear: {len(a_crear)}{Color.END}")
+        print(f" {Color.YELLOW}Actualizar: {len(a_actualizar)}{Color.END}")
+        print(f" {Color.RED}Eliminar: {len(a_eliminar)}{Color.END}")
+        
+        confirm = input(f"\n {Color.YELLOW}¿Ejecutar? (s/n): {Color.END}").strip().lower()
+        if confirm != 's':
+            return
+        
+        # Ejecutar fusión (mismo código que online)
+        creados = 0
+        actualizados = 0
+        eliminados = 0
+        
+        # CREAR
+        if a_crear:
+            print(f"\n {Color.GREEN}Creando usuarios...{Color.END}\n")
+            for i, username in enumerate(a_crear, 1):
+                data = usuarios_backup[username]
+                print(f"\r {Color.GREEN}Creando: {Color.WHITE}{username[:20]:<20}{Color.END} [{data['days']:2}d] ({i}/{len(a_crear)})", end="", flush=True)
+                
+                success, msg, expires = sincronizar_usuario(
+                    username=username,
+                    password=data['password'],
+                    dias=data['days'],
+                    operacion='crear',
+                    user_type=data['user_type'],
+                    max_conn=data['max_conn'],
+                    display_name=data['display_name']
+                )
+                
+                if success:
+                    creados += 1
+            print()
+        
+        # ACTUALIZAR
+        if a_actualizar:
+            print(f"\n {Color.YELLOW}Actualizando usuarios...{Color.END}\n")
+            for i, username in enumerate(a_actualizar, 1):
+                data = usuarios_backup[username]
+                print(f"\r {Color.YELLOW}Actualizando: {Color.WHITE}{username[:20]:<20}{Color.END} [{data['days']:2}d] ({i}/{len(a_actualizar)})", end="", flush=True)
+                
+                success, msg, expires = sincronizar_usuario(
+                    username=username,
+                    dias=data['days'],
+                    operacion='reiniciar'
+                )
+                
+                if success:
+                    actualizados += 1
+            print()
+        
+        # ELIMINAR
+        if a_eliminar:
+            print(f"\n {Color.RED}Eliminando huérfanos...{Color.END}\n")
+            for i, username in enumerate(a_eliminar, 1):
+                print(f"\r {Color.RED}Eliminando: {Color.WHITE}{username[:20]:<20}{Color.END} ({i}/{len(a_eliminar)})", end="", flush=True)
+                ejecutar_borrado_fisico(username)
+                eliminados += 1
+            print()
+        
+        print(f"\n {Color.GREEN}✓ Fusión completada:{Color.END}")
+        print(f" {Color.GREEN}Creados: {creados}{Color.END}")
+        print(f" {Color.YELLOW}Actualizados: {actualizados}{Color.END}")
+        print(f" {Color.RED}Eliminados: {eliminados}{Color.END}")
+        
+        moratech.log_action("admin", f"Fusión Local: +{creados} ~{actualizados} -{eliminados} ({seleccionado.name})")
     
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
