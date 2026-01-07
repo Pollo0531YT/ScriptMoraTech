@@ -177,15 +177,11 @@
                 referencia: document.getElementById('filterReferencia').value
             });
             
-            const response = await fetch('/api/activaciones?' + params, {
-                headers: { 'X-Auth-Key': 'moratech-key' }
-            });
+            const response = await fetch('/api/activaciones?' + params);
             activaciones = await response.json();
             
             // Cargar estadísticas
-            const statsResponse = await fetch('/api/estadisticas', {
-                headers: { 'X-Auth-Key': 'moratech-key' }
-            });
+            const statsResponse = await fetch('/api/estadisticas');
             const stats = await statsResponse.json();
             
             mostrarEstadisticas(stats);
@@ -262,8 +258,7 @@
             
             try {
                 const response = await fetch('/api/limpiar-activaciones', {
-                    method: 'POST',
-                    headers: { 'X-Auth-Key': 'moratech-key' }
+                    method: 'POST'
                 });
                 
                 const data = await response.json();
