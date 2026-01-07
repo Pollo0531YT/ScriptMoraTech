@@ -120,7 +120,7 @@ def obtener_estadisticas():
         
         activaciones = data['activaciones']
         total = len(activaciones)
-        exitosas = len([a for a in activaciones if a['success']])
+        exitosas = len([a for a in activaciones if a.get('success', False)])
         fallidas = total - exitosas
         
         # Contar por origen
@@ -132,8 +132,16 @@ def obtener_estadisticas():
         # Últimas 24 horas
         ahora = datetime.now(CR_TZ)
         hace_24h = ahora - timedelta(hours=24)
-        recientes = [a for a in activaciones 
-                    if datetime.strptime(a['timestamp'], '%Y-%m-%d %H:%M:%S').replace(tzinfo=CR_TZ) > hace_24h]
+        
+        recientes = []
+        for a in activaciones:
+            try:
+                ts = datetime.strptime(a['timestamp'], '%Y-%m-%d %H:%M:%S')
+                ts_cr = ts.replace(tzinfo=CR_TZ)
+                if ts_cr > hace_24h:
+                    recientes.append(a)
+            except Exception:
+                continue
         
         return {
             'total': total,
