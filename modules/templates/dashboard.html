@@ -171,21 +171,63 @@
         let activaciones = [];
         
         async function cargarDatos() {
-            const params = new URLSearchParams({
-                origen: document.getElementById('filterOrigen').value,
-                usuario: document.getElementById('filterUsuario').value,
-                referencia: document.getElementById('filterReferencia').value
-            });
-            
-            const response = await fetch('/api/activaciones?' + params);
-            activaciones = await response.json();
-            
-            // Cargar estadísticas
-            const statsResponse = await fetch('/api/estadisticas');
-            const stats = await statsResponse.json();
-            
-            mostrarEstadisticas(stats);
-            mostrarTabla();
+            try {
+                const params = new URLSearchParams({
+                    origen: document.getElementById('filterOrigen').value,
+                    usuario: document.getElementById('filterUsuario').value,
+                    referencia: document.getElementById('filterReferencia').value
+                });
+                
+                console.log('🔵 Cargando activaciones...');
+                const response = await fetch('/api/activaciones?' + params);
+                
+                if (!response.ok) {
+                    console.error('❌ Error en activaciones:', response.status);
+                    return;
+                }
+                
+                activaciones = await response.json();
+                console.log('✅ Activaciones cargadas:', activaciones.length);
+                
+                // Cargar estadísticas CON MANEJO DE ERRORES
+                try {
+                    console.log('🔵 Cargando estadísticas...');
+                    const statsResponse = await fetch('/api/estadisticas');
+                    
+                    if (statsResponse.ok) {
+                        const stats = await statsResponse.json();
+                        console.log('✅ Estadísticas cargadas:', stats);
+                        mostrarEstadisticas(stats);
+                    } else {
+                        console.warn('⚠️ Estadísticas falló con status:', statsResponse.status);
+                        const errorText = await statsResponse.text();
+                        console.error('Error response:', errorText);
+                        
+                        // Fallback: calcular estadísticas localmente
+                        mostrarEstadisticas({
+                            total: activaciones.length,
+                            exitosas: activaciones.filter(a => a.success).length,
+                            fallidas: activaciones.filter(a => !a.success).length,
+                            ultimas_24h: 0
+                        });
+                    }
+                } catch (statsError) {
+                    console.error('❌ Error en estadísticas:', statsError);
+                    // Fallback
+                    mostrarEstadisticas({
+                        total: activaciones.length,
+                        exitosas: activaciones.filter(a => a.success).length,
+                        fallidas: activaciones.filter(a => !a.success).length,
+                        ultimas_24h: 0
+                    });
+                }
+                
+                // SIEMPRE mostrar tabla
+                mostrarTabla();
+                
+            } catch (error) {
+                console.error('❌ Error general en cargarDatos():', error);
+            }
         }
         
         function mostrarEstadisticas(stats) {
