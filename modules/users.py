@@ -539,7 +539,7 @@ def mostrar_users_registrados():
                 if now_cr > expire_date:
                     status = f"{Color.RED}EXPIRADO{Color.END}"
                 else:
-                    days = (expire_date - now_cr).days
+                    days = (expire_date - now_cr).days + 1
                     status = f"{Color.GREEN}{days} días{Color.END}"
             else:
                 status = f"{Color.CYAN}ILIMITADO{Color.END}"
@@ -575,14 +575,20 @@ def info_exacta_usuario():
         if expires:
             expire_dt = datetime.fromisoformat(expires).replace(tzinfo=CR_TZ)
             now = datetime.now(CR_TZ)
+
+            # Formateamos la fecha para mostrarla SIEMPRE
+            fecha_vence_str = expire_dt.strftime('%d/%m/%Y %H:%M')
+
             if now > expire_dt:
-                dias_restantes = f"{Color.RED}EXPIRADO{Color.END}"
-                estado_visual = f"{Color.RED}● INACTIVO / CADUCADO{Color.END}"
+                # Caso: EXPIRADO (Aun así calculamos los días con el +1 por coherencia)
+                diff = (expire_dt - now).days + 1
+                dias_restantes = f"{Color.RED}EXPIRADO ({diff} días){Color.END}"
+                estado_visual = f"{Color.RED}● INACTIVO / CADUCADO (Venció: {fecha_vence_str}){Color.END}"
             else:
-                diff = (expire_dt - now).days
-                # Si queda menos de 1 día pero no ha vencido
-                dias_restantes = f"{Color.GREEN}{diff} días{Color.END}" if diff > 0 else f"{Color.YELLOW}Vence hoy{Color.END}"
-                estado_visual = f"{Color.GREEN}● ACTIVO (Vence: {expire_dt.strftime('%d/%m/%Y %H:%M')}){Color.END}"
+                # Caso: ACTIVO (Aplicamos tu +1)
+                diff = (expire_dt - now).days + 1
+                dias_restantes = f"{Color.GREEN}{diff} días{Color.END}"
+                estado_visual = f"{Color.GREEN}● ACTIVO (Vence: {fecha_vence_str}){Color.END}"
         else:
             dias_restantes = f"{Color.CYAN}ILIMITADO{Color.END}"
             estado_visual = f"{Color.GREEN}● ACTIVO PERMANENTE{Color.END}"
