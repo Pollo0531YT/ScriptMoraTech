@@ -522,20 +522,12 @@ def mostrar_users_registrados():
         for username, data in users.items():
             user_type = data.get('type', 'ssh')
             expires = data.get('expires')
-            
-            # --- NIVEL 1: Nombre y Tipo ---
-            if user_type == 'token':
-                display_name = data.get('display_name', 'Sin Nombre')
-                print(f" {Color.WHITE}{display_name}{Color.END} - {Color.MAGENTA}(TOKEN){Color.END}")
-                detail_id = username
-            else:
-                print(f" {Color.WHITE}{username}{Color.END} - {Color.BLUE}(SSH){Color.END}")
-                detail_id = username
 
             # --- CÁLCULO DE STATUS ---
             if expires:
                 expire_date = datetime.fromisoformat(expires).replace(tzinfo=CR_TZ)  
                 now_cr = datetime.now(CR_TZ)
+                fecha_txt = f"[{expire_date.strftime('%d/%m/%Y')}]"
                 if now_cr > expire_date:
                     status = f"{Color.RED}EXPIRADO{Color.END}"
                 else:
@@ -543,6 +535,18 @@ def mostrar_users_registrados():
                     status = f"{Color.GREEN}{days} días{Color.END}"
             else:
                 status = f"{Color.CYAN}ILIMITADO{Color.END}"
+            
+            # --- NIVEL 1: Nombre y Tipo ---
+            if user_type == 'token':
+                display_name = data.get('display_name', 'Sin Nombre')
+                print(f" {Color.WHITE}{display_name:<18}{Color.END} - {Color.MAGENTA}(TOKEN){Color.END} - {Color.YELLOW}{fecha_txt}{Color.END}")
+                #print(f" {Color.WHITE}{display_name}{Color.END} - {Color.MAGENTA}(TOKEN){Color.END}")
+                detail_id = username
+            else:
+                print(f" {Color.WHITE}{username:<18}{Color.END} - {Color.BLUE}(SSH){Color.END} - {Color.YELLOW}{fecha_txt}{Color.END}")
+                #print(f" {Color.WHITE}{username}{Color.END} - {Color.BLUE}(SSH){Color.END}")
+                detail_id = username
+
 
             # --- NIVEL 2: Detalle Técnico (Flecha) ---
             # Usamos :<20 para alinear la columna de los días
