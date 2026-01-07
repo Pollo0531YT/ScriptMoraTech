@@ -264,7 +264,7 @@ def api_borrar():
             return jsonify({'error': 'No se enviaron datos'}), 400
         
         username = data.get('user')
-        origen = data.get('origen', )
+        origen = data.get('origen', 'api')
         
         if not username:
             log_api_request('/api/borrar', data, 'Missing user')
