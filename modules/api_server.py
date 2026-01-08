@@ -163,6 +163,16 @@ def api_agregar_token():
         
         if success:
             registrar_activacion('agregar_token', token, nombre, days, referencia, origen, True)
+
+            # Notificar a telegram
+            enviar_notificacion_telegram('token_creado', {
+                'nombre': nombre,
+                'token': token,
+                'dias': days + 1,  # Visual +1
+                'expira': expires.strftime('%d/%m/%Y'),
+                'origen': origen
+            })
+
             return jsonify({
                 'success': True,
                 'nombre': nombre,
@@ -204,6 +214,14 @@ def api_renovar():
             total_days = diff.days if diff.days >= 0 else 0
             
             registrar_activacion('renovar', token, nombre, dias, referencia, origen, True)
+
+            # notificar a telegram
+            enviar_notificacion_telegram('token_renovado', {
+                'token': token,
+                'dias_totales': total_days + 1,  # Visual +1
+                'expira': new_date.strftime('%d/%m/%Y'),
+                'origen': origen
+            })
             
             return jsonify({
                 'success': True,
@@ -277,6 +295,12 @@ def api_borrar():
             # Registrar en activaciones
             registrar_activacion('borrar', username, username, 0, 'Borrar-user', origen, True)
             log_api_request('/api/borrar', data, f'OK - {message}')
+
+             # notificar a telegram
+            enviar_notificacion_telegram('usuario_borrado', {
+                'token': username,
+                'origen': origen
+            })
             
             return jsonify({
                 'success': True,
@@ -411,6 +435,55 @@ def api_estadisticas():
     """Obtener estadísticas de activaciones"""
     stats = obtener_estadisticas()
     return jsonify(stats), 200
+
+def enviar_notificacion_telegram(tipo: str, datos: dict):
+    """Enviar notificación al bot de Telegram vía webhook"""
+    try:
+        # Formatear mensaje según tipo
+        if tipo == 'token_creado':
+            mensaje = (
+                f"✅ **Token creado**\n\n"
+                f"👤 Nombre: `{datos['nombre']}`\n"
+                f"🔑 Token: `{datos['token']}`\n"
+                f"⏰ Días: `{datos['dias']}`\n"
+                f"📅 Expira: `{datos['expira']}`\n"
+                f"🌐 Origen: `{datos['origen']}`"
+            )
+        elif tipo == 'token_renovado':
+            mensaje = (
+                f"🔄 **Token renovado**\n\n"
+                f"🔑 Token: `{datos['token']}`\n"
+                f"⏰ Días: `{datos['dias']}`\n"
+                f"📅 Expira: `{datos['expira']}`\n"
+                f"🌐 Origen: `{datos['origen']}`"
+            )
+        elif tipo == 'ssh_creado':
+            mensaje = (
+                f"✅ **Usuario SSH creado**\n\n"
+                f"👤 Usuario: `{datos['usuario']}`\n"
+                f"⏰ Días: `{datos['dias']}`\n"
+                f"📅 Expira: `{datos['expira']}`\n"
+                f"🌐 Origen: `{datos['origen']}`"
+            )
+        elif tipo == 'usuario_borrado':
+            mensaje = (
+                f"🗑️ **Usuario eliminado**\n\n"
+                f"🔑 Usuario: `{datos['usuario']}`\n"
+                f"🌐 Origen: `{datos['origen']}`"
+            )
+        else:
+            return
+        
+        # Enviar al webhook del bot
+        import requests
+        requests.post(
+            'http://localhost:9999/notify',
+            json={'mensaje': mensaje},
+            timeout=2
+        )
+    except Exception as e:
+        # Si falla, no pasa nada (el API sigue funcionando)
+        print(f"No se pudo enviar notificación: {e}")
 
 
 if __name__ == '__main__':

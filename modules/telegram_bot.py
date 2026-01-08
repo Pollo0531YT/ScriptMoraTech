@@ -447,6 +447,48 @@ async def revisar_handler(message: Message):
     except Exception as e:
         await message.answer(f"❌ Error: {str(e)}")
 
+# ==================== NOTIFICACIONES ====================
+
+# Endpoint HTTP para recibir notificaciones desde API Server
+from aiohttp import web
+
+async def webhook_notificacion(request):
+    """Recibir notificación desde API Server y enviar a todos los chats autorizados"""
+    try:
+        data = await request.json()
+        mensaje = data.get('mensaje', '')
+        
+        # Enviar a TODOS los chats autorizados
+        if authorized_chats:
+            for chat_id in authorized_chats:
+                try:
+                    await bot.send_message(
+                        chat_id=chat_id,
+                        text=mensaje,
+                        parse_mode="Markdown"
+                    )
+                except Exception as e:
+                    print(f"Error enviando a chat {chat_id}: {e}")
+            
+            return web.Response(text='{"success": true}', content_type='application/json')
+        else:
+            return web.Response(text='{"error": "No hay chats autorizados"}', status=400)
+    
+    except Exception as e:
+        return web.Response(text=f'{{"error": "{str(e)}"}}', status=500)
+
+
+# Iniciar servidor web para webhook
+async def init_webhook_server():
+    app_web = web.Application()
+    app_web.router.add_post('/notify', webhook_notificacion)
+    
+    runner = web.AppRunner(app_web)
+    await runner.setup()
+    site = web.TCPSite(runner, 'localhost', 9999)
+    await site.start()
+    print("🌐 Webhook server iniciado en http://localhost:9999/notify")
+
 # ==================== MAIN ====================
 
 async def main():
@@ -457,6 +499,9 @@ async def main():
     print(f"📱 Usuario: {ACCESS_USER}")
     print("📡 Esperando comandos...")
     print("=" * 50)
+
+    # Iniciar webhook server en paralelo
+    asyncio.create_task(init_webhook_server())
     
     try:
         await dp.start_polling(bot)
