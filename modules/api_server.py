@@ -298,7 +298,7 @@ def api_borrar():
 
              # notificar a telegram
             enviar_notificacion_telegram('usuario_borrado', {
-                'token': username,
+                'usuario': username,
                 'origen': origen
             })
             
