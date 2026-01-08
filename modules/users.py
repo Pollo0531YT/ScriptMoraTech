@@ -42,6 +42,8 @@ def control_usuarios_menu():
         print_line()
         print(f" {Color.GREEN}[14]{Color.END} ➮ REINICIAR CONTRASEÑA TOKEN")
         print_line()
+        print(f" {Color.GREEN}[15]{Color.END} ➮ BOT TELEGRAM")
+        print_line()
         print(f" {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}Volver{Color.END}")
         print_line()
         
@@ -67,6 +69,8 @@ def control_usuarios_menu():
             menu_api_general()
         elif choice == '14':
             reset_token_password()
+        elif choice == '15':
+            menu_bot_telegram()
         elif choice == '0':
             break
 
@@ -2513,3 +2517,305 @@ def view_api_general_logs():
         input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     
     menu_api_general()
+
+
+# BOT DE TELEGRAM
+# ==================== BOT DE TELEGRAM ====================
+
+def menu_bot_telegram():
+    """Menú del Bot de Telegram"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}BOT DE TELEGRAM{Color.END}")
+    print_line()
+    
+    # Verificar si hay bot corriendo
+    check_bot = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+    is_running = 'moratech_telegram_bot' in check_bot.stdout
+    
+    if is_running:
+        # Bot corriendo - mostrar info
+        print(f"\n {Color.GREEN}✓ Bot de Telegram activo{Color.END}")
+        
+        # Leer configuración
+        try:
+            bot_config_file = CONFIG_DIR / 'bot_config.json'
+            if bot_config_file.exists():
+                with open(bot_config_file, 'r') as f:
+                    config = json.load(f)
+                    bot_username = config.get('bot_username', 'N/A')
+                    access_user = config.get('access_user', 'N/A')
+                    
+                    print(f" {Color.CYAN}Bot: {Color.GREEN}@{bot_username}{Color.END}")
+                    print(f" {Color.CYAN}Usuario acceso: {Color.GREEN}{access_user}{Color.END}")
+        except:
+            pass
+        
+        print_line()
+        print(f" {Color.GREEN}[1]{Color.END} ➮ Ver logs (screen)")
+        print(f" {Color.GREEN}[2]{Color.END} ➮ Detener bot")
+        print(f" {Color.GREEN}[3]{Color.END} ➮ Reiniciar bot")
+    else:
+        print(f"\n {Color.YELLOW}Bot detenido{Color.END}")
+        print_line()
+        print(f" {Color.GREEN}[1]{Color.END} ➮ Iniciar Bot de Telegram")
+    
+    print_line()
+    print(f" {Color.RED}[0]{Color.END} ⇦ {Color.YELLOW}Volver{Color.END}")
+    print_line()
+    
+    choice = input(f" {Color.CYAN}►{Color.END} Opción: ").strip()
+    
+    if choice == '1':
+        if is_running:
+            view_bot_logs()
+        else:
+            start_bot_telegram()
+    elif choice == '2' and is_running:
+        stop_bot_telegram()
+    elif choice == '3' and is_running:
+        restart_bot_telegram()
+    elif choice == '0':
+        return
+    else:
+        menu_bot_telegram()
+
+
+def start_bot_telegram():
+    """Iniciar Bot de Telegram"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}INICIAR BOT DE TELEGRAM{Color.END}")
+    print_line()
+    
+    # Ruta del bot
+    bot_dir = '/usr/local/lib/moratech/modules'
+    bot_file = f'{bot_dir}/telegram_bot.py'
+    
+    # Verificar que existe el archivo
+    if not os.path.exists(bot_file):
+        print(f"\n {Color.RED}✗ No se encuentra telegram_bot.py{Color.END}")
+        print(f" {Color.YELLOW}Ubicación esperada: {bot_file}{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    # Verificar si ya tiene configuración
+    bot_config_file = CONFIG_DIR / 'bot_config.json'
+    
+    if bot_config_file.exists():
+        print(f"\n {Color.YELLOW}Ya existe una configuración.{Color.END}")
+        reconfigurar = input(f" {Color.CYAN}¿Reconfigurar? (s/n): {Color.END}").strip().lower()
+        
+        if reconfigurar != 's':
+            # Iniciar con config existente
+            print(f"\n {Color.YELLOW}⏳ Iniciando bot con configuración existente...{Color.END}")
+            _launch_bot(bot_file)
+            return
+    
+    # Configuración nueva
+    print(f"\n {Color.YELLOW}═══════════════════════════════════════════════════{Color.END}")
+    print(f" {Color.CYAN}CONFIGURACIÓN DEL BOT{Color.END}")
+    print(f" {Color.YELLOW}═══════════════════════════════════════════════════{Color.END}")
+    
+    print(f"\n {Color.GREEN}1. Token del Bot (de @BotFather):{Color.END}")
+    bot_token = input(f" {Color.CYAN}►{Color.END} ").strip()
+    
+    if not bot_token:
+        print(f" {Color.RED}✗ Token requerido{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
+    
+    print(f"\n {Color.GREEN}2. Usuario para acceso:{Color.END}")
+    access_user = input(f" {Color.CYAN}►{Color.END} ").strip()
+    
+    if not access_user:
+        access_user = "MoraTech"
+        print(f" {Color.YELLOW}Usando: {access_user}{Color.END}")
+    
+    print(f"\n {Color.GREEN}3. Contraseña para acceso:{Color.END}")
+    access_password = input(f" {Color.CYAN}►{Color.END} ").strip()
+    
+    if not access_password:
+        access_password = "moratech2026"
+        print(f" {Color.YELLOW}Usando: {access_password}{Color.END}")
+    
+    print(f"\n {Color.YELLOW}⏳ Guardando configuración...{Color.END}")
+    
+    try:
+        # Verificar bot con Telegram
+        print(f" {Color.YELLOW}Verificando bot...{Color.END}")
+        
+        bot_username = 'Unknown'
+        try:
+            import requests
+            response = requests.get(f'https://api.telegram.org/bot{bot_token}/getMe', timeout=5)
+            if response.status_code == 200:
+                bot_info = response.json()
+                bot_username = bot_info['result']['username']
+                print(f" {Color.GREEN}✓ Bot verificado: @{bot_username}{Color.END}")
+            else:
+                print(f" {Color.YELLOW}⚠ No se pudo verificar el bot{Color.END}")
+        except Exception as e:
+            print(f" {Color.YELLOW}⚠ Error verificando: {e}{Color.END}")
+        
+        # Crear configuración
+        bot_config = {
+            'bot_token': bot_token,
+            'access_user': access_user,
+            'access_password': access_password,
+            'bot_username': bot_username,
+            'configured_at': datetime.now().isoformat()
+        }
+        
+        CONFIG_DIR.mkdir(exist_ok=True)
+        with open(bot_config_file, 'w') as f:
+            json.dump(bot_config, f, indent=4)
+        
+        print(f" {Color.GREEN}✓ Configuración guardada{Color.END}")
+        
+        # Verificar aiogram
+        print(f"\n {Color.YELLOW}Verificando dependencias...{Color.END}")
+        check_aiogram = subprocess.run(['python3', '-c', 'import aiogram'], 
+                                      capture_output=True, text=True)
+        
+        if check_aiogram.returncode != 0:
+            print(f" {Color.YELLOW}Instalando aiogram...{Color.END}")
+            subprocess.run(['pip3', 'install', 'aiogram==3.15.0'],
+                         capture_output=True, text=True)
+            print(f" {Color.GREEN}✓ aiogram instalado{Color.END}")
+        else:
+            print(f" {Color.GREEN}✓ aiogram disponible{Color.END}")
+        
+        # Iniciar bot
+        _launch_bot(bot_file, bot_username, access_user, access_password)
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        import traceback
+        traceback.print_exc()
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+
+def _launch_bot(bot_file, bot_username=None, access_user=None, access_password=None):
+    """Lanzar el bot en screen"""
+    try:
+        import time
+        
+        print(f"\n {Color.YELLOW}⏳ Iniciando bot en screen...{Color.END}")
+        
+        # Iniciar bot
+        subprocess.run([
+            'screen', '-dmS', 'moratech_telegram_bot',
+            'python3', bot_file
+        ])
+        
+        time.sleep(2)
+        
+        # Verificar que inició
+        check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+        if 'moratech_telegram_bot' not in check.stdout:
+            print(f"\n {Color.RED}✗ El bot no pudo iniciar{Color.END}")
+            print(f" {Color.YELLOW}Revisa los logs: screen -r moratech_telegram_bot{Color.END}")
+            input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+            return
+        
+        print(f"\n {Color.GREEN}✓ Bot iniciado correctamente{Color.END}")
+        
+        if bot_username and access_user and access_password:
+            print(f"\n {Color.CYAN}═══════════════════════════════════════{Color.END}")
+            print(f" {Color.GREEN}Información de Acceso:{Color.END}")
+            print(f" {Color.CYAN}═══════════════════════════════════════{Color.END}")
+            print(f" {Color.CYAN}Bot: {Color.GREEN}@{bot_username}{Color.END}")
+            print(f" {Color.CYAN}Usuario: {Color.GREEN}{access_user}{Color.END}")
+            print(f" {Color.CYAN}Contraseña: {Color.GREEN}{access_password}{Color.END}")
+            print(f"\n {Color.YELLOW}Comando de acceso:{Color.END}")
+            print(f" {Color.GREEN}/access {access_user} {access_password}{Color.END}")
+            print(f" {Color.CYAN}═══════════════════════════════════════{Color.END}")
+        
+        moratech.log_action("admin", "Bot de Telegram iniciado")
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    menu_bot_telegram()
+
+
+def stop_bot_telegram():
+    """Detener Bot de Telegram"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}DETENER BOT DE TELEGRAM{Color.END}")
+    print_line()
+    
+    confirm = input(f"\n {Color.YELLOW}¿Detener bot? (s/n): {Color.END}").strip().lower()
+    
+    if confirm == 's':
+        try:
+            subprocess.run(['screen', '-S', 'moratech_telegram_bot', '-X', 'quit'], 
+                         stderr=subprocess.DEVNULL)
+            print(f"\n {Color.GREEN}✓ Bot detenido{Color.END}")
+            moratech.log_action("admin", "Bot de Telegram detenido")
+        except Exception as e:
+            print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    else:
+        print(f"\n {Color.YELLOW}Operación cancelada{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    menu_bot_telegram()
+
+
+def restart_bot_telegram():
+    """Reiniciar Bot de Telegram"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}REINICIAR BOT DE TELEGRAM{Color.END}")
+    print_line()
+    
+    bot_file = '/usr/local/lib/moratech/modules/telegram_bot.py'
+    
+    print(f"\n {Color.YELLOW}⏳ Deteniendo bot...{Color.END}")
+    
+    try:
+        subprocess.run(['screen', '-S', 'moratech_telegram_bot', '-X', 'quit'], 
+                     stderr=subprocess.DEVNULL)
+        
+        import time
+        time.sleep(1)
+        
+        print(f" {Color.GREEN}✓ Bot detenido{Color.END}")
+        print(f"\n {Color.YELLOW}⏳ Iniciando bot...{Color.END}")
+        
+        _launch_bot(bot_file)
+        
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+
+def view_bot_logs():
+    """Ver logs del bot (conecta a screen)"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}LOGS DEL BOT DE TELEGRAM{Color.END}")
+    print_line()
+    
+    print(f"\n {Color.YELLOW}Conectando a screen del bot...{Color.END}")
+    print(f" {Color.CYAN}Usa Ctrl+A luego D para salir sin detener el bot{Color.END}\n")
+    
+    input(f" {Color.CYAN}Presiona Enter para continuar...{Color.END}")
+    
+    try:
+        subprocess.run(['screen', '-r', 'moratech_telegram_bot'])
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    menu_bot_telegram()
