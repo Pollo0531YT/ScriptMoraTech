@@ -178,7 +178,7 @@ async def token_handler(message: Message):
                 f"✅ **Token creado**\n\n"
                 f"👤 Nombre: `{nombre}`\n"
                 f"🔑 Token: `{token}`\n"
-                f"⏰ Días: `{dias}`\n"
+                f"⏰ Días: `{dias + 1}`\n"
                 f"📅 Expira: `{expires.strftime('%d/%m/%Y')}`",
                 parse_mode="Markdown"
             )
@@ -234,10 +234,16 @@ async def renovarM_handler(message: Message):
         )
         
         if success:
+
+            # Calcular días restantes desde hoy hasta new_date
+            CR_TZ = timezone(timedelta(hours=-6))
+            now_cr = datetime.now(CR_TZ)
+            dias_restantes = (new_date - now_cr).days
+
             await message.answer(
                 f"✅ **Token renovado**\n\n"
                 f"🔑 Token: `{token}`\n"
-                f"➕ Días sumados: `{dias}`\n"
+                f"⏰ Días: `{dias_restantes + 1}`\n"
                 f"📅 Expira: `{new_date.strftime('%d/%m/%Y')}`",
                 parse_mode="Markdown"
             )
@@ -292,10 +298,16 @@ async def renovar_handler(message: Message):
         )
         
         if success:
+
+            # Calcular días restantes desde hoy hasta new_date
+            CR_TZ = timezone(timedelta(hours=-6))
+            now_cr = datetime.now(CR_TZ)
+            dias_restantes = (new_date - now_cr).days
+
             await message.answer(
                 f"✅ **Token reiniciado**\n\n"
                 f"🔑 Token: `{token}`\n"
-                f"🔄 Días: `{dias}`\n"
+                f"⏰ Días: `{dias_restantes + 1}`\n"
                 f"📅 Expira: `{new_date.strftime('%d/%m/%Y')}`",
                 parse_mode="Markdown"
             )
@@ -380,7 +392,7 @@ async def agregar_handler(message: Message):
                 f"👤 Usuario: `{username}`\n"
                 f"🔒 Contraseña: `{password}`\n"
                 f"🔗 Conexiones: `{max_conn}`\n"
-                f"⏰ Días: `{dias}`\n"
+                f"⏰ Días: `{dias + 1}`\n"
                 f"📅 Expira: `{expires.strftime('%d/%m/%Y')}`",
                 parse_mode="Markdown"
             )
@@ -429,7 +441,7 @@ async def revisar_handler(message: Message):
             f"{estado}\n\n"
             f"🔑 Token: `{token}`\n"
             f"📅 Expira: `{expires_date.strftime('%d/%m/%Y')}`\n"
-            f"⏰ Días: `{dias_restantes}`",
+            f"⏰ Días: `{dias_restantes + 1}`",
             parse_mode="Markdown"
         )
     except Exception as e:
