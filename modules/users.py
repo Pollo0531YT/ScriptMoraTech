@@ -985,7 +985,7 @@ def backup_online_chumo():
         
         # Obtener IP del servidor
         try:
-            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+            ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip()
         except:
@@ -1738,7 +1738,7 @@ def menu_checkuser():
         
         # Obtener IP
         try:
-            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+            ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip()
             print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/checkUser{Color.END}")
@@ -1832,7 +1832,7 @@ def start_checkuser_server():
                 # Verificar instalación nuevamente
                 check_flask = subprocess.run(['python3', '-c', 'import flask'], 
                                              capture_output=True, text=True)
-                
+                ip_result
                 if install_result.returncode != 0:
                     # Fallback a pip normal
                     subprocess.run(pip_cmd.split() + ['install', 'flask', '--break-system-packages'], 
@@ -1887,7 +1887,7 @@ def start_checkuser_server():
         
         # Obtener IP
         try:
-            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+            ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip()
         except:
@@ -1991,7 +1991,7 @@ def menu_api_server():
         
         # Obtener IP
         try:
-            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+            ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip()
             print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/api/{Color.END}")
@@ -2106,7 +2106,7 @@ def start_api_server():
             f.write(port)
         
         try:
-            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+            ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip()
         except:
@@ -2201,7 +2201,7 @@ def restart_api_server():
             print(f" {Color.GREEN}✓ Servidor reiniciado correctamente{Color.END}")
             
             try:
-                ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                          capture_output=True, text=True, timeout=3)
                 server_ip = ip_result.stdout.strip()
                 print(f"\n {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/api/{Color.END}")
@@ -2271,7 +2271,7 @@ def menu_api_general():
         
         # Obtener IP
         try:
-            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+            ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip()
             print(f" {Color.CYAN}Dashboard: {Color.GREEN}http://{server_ip}:{port}/dashboard-global{Color.END}")
@@ -2376,7 +2376,7 @@ def start_api_general_server():
         
         # Obtener IP para mostrar URLs (intentar curl, fallback a placeholder)
         try:
-            ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+            ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip() or "TU_IP"
         except:
@@ -2470,7 +2470,7 @@ def restart_api_general_server():
             print(f" {Color.GREEN}✓ Servidor reiniciado correctamente{Color.END}")
             
             try:
-                ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                          capture_output=True, text=True, timeout=3)
                 server_ip = ip_result.stdout.strip()
                 print(f"\n {Color.CYAN}Dashboard: {Color.GREEN}http://{server_ip}:{port}/dashboard-global{Color.END}")
@@ -2487,7 +2487,7 @@ def restart_api_general_server():
     
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     menu_api_general()
-    
+
 def view_api_general_logs():
     """Ver logs del API General"""
     clear_screen()
