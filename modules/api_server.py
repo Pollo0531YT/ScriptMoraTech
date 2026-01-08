@@ -218,7 +218,7 @@ def api_renovar():
             # notificar a telegram
             enviar_notificacion_telegram('token_renovado', {
                 'token': token,
-                'dias_totales': total_days + 1,  # Visual +1
+                'dias': total_days + 1,  # Visual +1
                 'expira': new_date.strftime('%d/%m/%Y'),
                 'origen': origen
             })
