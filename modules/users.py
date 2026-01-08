@@ -32,6 +32,7 @@ def control_usuarios_menu():
         print(f" {Color.GREEN}[03]{Color.END} ➮ EDITAR/RENOVAR USUARIOS")
         print(f" {Color.GREEN}[04]{Color.END} ➮ MOSTRAR USUARIOS REGISTRADOS")
         print(f" {Color.GREEN}[05]{Color.END} ➮ INFO EXACTA DE USUARIO")
+        print(f" {Color.GREEN}[06]{Color.END} ➮ MOSTRAR USUARIOS CONECTADOS")
         print_line()
         print(f" {Color.GREEN}[09]{Color.END} ➮ BACKUP USUARIOS")
         print_line()
@@ -59,6 +60,8 @@ def control_usuarios_menu():
             mostrar_users_registrados()
         elif choice == '5':
             info_exacta_usuario()
+        elif choice == '6':
+            mostrar_users_conectados()
         elif choice == '9':
             menu_backup()
         elif choice == '13':
@@ -628,6 +631,59 @@ def info_exacta_usuario():
         print(f"\n {Color.RED}✗ Error: El usuario o token '{search}' no existe en la base de datos.{Color.END}")
         
     input(f"\n{Color.CYAN}Presiona Enter para volver al menú...{Color.END}")
+
+#info de usuarios conectados
+
+def mostrar_users_conectados():
+    """Muestra solo los usuarios que tienen procesos activos en el sistema (Online)"""
+    clear_screen()
+    print_banner()
+    print(f"\n{Color.GREEN}╔══════════════════════════════════════════════════════════╗{Color.END}")
+    print(f"{Color.GREEN}║                USUARIOS CONECTADOS AHORA                 ║{Color.END}")
+    print(f"{Color.GREEN}╚══════════════════════════════════════════════════════════╝{Color.END}\n")
+    
+    users = load_users()
+    conectados_count = 0
+    
+    if not users:
+        print(f" {Color.YELLOW}No hay usuarios en la base de datos.{Color.END}")
+    else:
+        for username, data in users.items():
+            # El ID para pgrep siempre debe ser el 'username' (el que se usa en Linux)
+            # Si es tipo token, asumimos que el username de la DB es el mismo que en Linux
+            
+            # Verificación de conexión (pgrep devuelve 0 si hay procesos)
+            check_online = subprocess.run(['pgrep', '-u', username], stdout=subprocess.DEVNULL)
+            
+            if check_online.returncode == 0:
+                conectados_count += 1
+                user_type = data.get('type', 'ssh')
+                expires = data.get('expires')
+                display_name = data.get('display_name', username) if user_type == 'token' else username
+
+                # --- Cálculo de tiempo restante (Opcional pero útil) ---
+                if expires:
+                    expire_date = datetime.fromisoformat(expires).replace(tzinfo=CR_TZ)
+                    now_cr = datetime.now(CR_TZ)
+                    days_left = (expire_date - now_cr).days + 1
+                    status_time = f"{Color.GREEN}{days_left}d restantes{Color.END}"
+                else:
+                    status_time = f"{Color.CYAN}ILIMITADO{Color.END}"
+
+                # --- Diseño de fila para usuario conectado ---
+                tipo_tag = f"{Color.MAGENTA}(TOKEN){Color.END}" if user_type == 'token' else f"{Color.BLUE}(SSH){Color.END}"
+                
+                print(f" {Color.GREEN}●{Color.END} {Color.WHITE}{display_name:<18}{Color.END} {tipo_tag}")
+                print(f"   {Color.CYAN}└─>{Color.END} ID: {Color.YELLOW}{username:<15}{Color.END} | {status_time}")
+                print(f" {Color.GRAY}{'─' * 45}{Color.END}")
+
+        if conectados_count == 0:
+            print(f" {Color.GRAY}  No hay usuarios conectados en este momento.{Color.END}")
+        
+        # --- RESUMEN FINAL ---
+        print(f"\n {Color.CYAN}Total Online:{Color.END} {Color.GREEN}{conectados_count}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter para volver...{Color.END}")
 
 #RE-INICIAR CONTRASEÑA DE TOKEN #MEJORADA
 def reset_token_password():
