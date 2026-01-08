@@ -25,6 +25,24 @@ from modules.users import sincronizar_usuario, ejecutar_borrado_fisico, load_use
 
 CONFIG_DIR = Path.home() / '.moratech'
 BOT_CONFIG_FILE = CONFIG_DIR / 'bot_config.json'
+SESSIONS_FILE = CONFIG_DIR / 'authorized_sessions.json'
+
+def load_authorized_chats():
+    """Carga los IDs autorizados desde el archivo"""
+    if SESSIONS_FILE.exists():
+        with open(SESSIONS_FILE, 'r') as f:
+            try:
+                # Los JSON guardan las llaves como strings, los convertimos a int
+                return set(json.load(f))
+            except:
+                return set()
+    return set()
+
+def save_authorized_chat(chat_id):
+    """Guarda un nuevo ID en el archivo"""
+    authorized_chats.add(chat_id)
+    with open(SESSIONS_FILE, 'w') as f:
+        json.dump(list(authorized_chats), f)
 
 def load_bot_config():
     """Cargar configuración del bot"""
@@ -49,7 +67,7 @@ dp = Dispatcher(storage=MemoryStorage())
 router = Router()
 
 # Usuarios autorizados (en memoria)
-authorized_chats = set()
+authorized_chats = load_authorized_chats()
 
 
 # ==================== HELPERS ====================
@@ -101,6 +119,13 @@ async def salir_handler(message: Message, state: FSMContext):
 
 @router.message(Command(commands=["access"], ignore_case=True))
 async def access_handler(message: Message):
+
+    # --- SEGURIDAD: Borrar el mensaje que contiene la contraseña ---
+    try:
+        await message.delete()
+    except:
+        pass # Por si no tiene permisos de borrar mensajes
+
     args = message.text.split()[1:]
     
     if len(args) != 2:
@@ -114,7 +139,8 @@ async def access_handler(message: Message):
     username, password = args
     
     if username == ACCESS_USER and password == ACCESS_PASSWORD:
-        authorized_chats.add(message.chat.id)
+        save_authorized_chat(message.chat.id)
+        
         await message.answer(
             "✅ **Acceso concedido**\n\n"
             "Usa /help para ver los comandos.",
