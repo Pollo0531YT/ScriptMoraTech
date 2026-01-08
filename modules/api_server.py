@@ -170,7 +170,8 @@ def api_agregar_token():
                 'token': token,
                 'dias': days + 1,  # Visual +1
                 'expira': expires.strftime('%d/%m/%Y'),
-                'origen': origen
+                'origen': origen,
+                'referencia': referencia
             })
 
             return jsonify({
@@ -220,7 +221,8 @@ def api_renovar():
                 'token': token,
                 'dias': total_days + 1,  # Visual +1
                 'expira': new_date.strftime('%d/%m/%Y'),
-                'origen': origen
+                'origen': origen,
+                'referencia': referencia
             })
             
             return jsonify({
@@ -447,6 +449,7 @@ def enviar_notificacion_telegram(tipo: str, datos: dict):
                 f"🔑 Token: `{datos['token']}`\n"
                 f"⏰ Días: `{datos['dias']}`\n"
                 f"📅 Expira: `{datos['expira']}`\n"
+                f"🏦 Referencia: `{datos['referencia']}`\n"
                 f"🌐 Origen: `{datos['origen']}`"
             )
         elif tipo == 'token_renovado':
@@ -455,6 +458,7 @@ def enviar_notificacion_telegram(tipo: str, datos: dict):
                 f"🔑 Token: `{datos['token']}`\n"
                 f"⏰ Días: `{datos['dias']}`\n"
                 f"📅 Expira: `{datos['expira']}`\n"
+                f"🏦 Referencia: `{datos['referencia']}`\n"
                 f"🌐 Origen: `{datos['origen']}`"
             )
         elif tipo == 'ssh_creado':
@@ -463,6 +467,7 @@ def enviar_notificacion_telegram(tipo: str, datos: dict):
                 f"👤 Usuario: `{datos['usuario']}`\n"
                 f"⏰ Días: `{datos['dias']}`\n"
                 f"📅 Expira: `{datos['expira']}`\n"
+                f"🏦 Referencia: `{datos['referencia']}`\n"
                 f"🌐 Origen: `{datos['origen']}`"
             )
         elif tipo == 'usuario_borrado':
