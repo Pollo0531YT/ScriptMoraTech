@@ -2001,6 +2001,7 @@ def menu_api_server():
         print_line()
         print(f" {Color.GREEN}[1]{Color.END} ➮ Ver logs")
         print(f" {Color.GREEN}[2]{Color.END} ➮ Detener servidor")
+        print(f" {Color.GREEN}[3]{Color.END} ➮ Reiniciar servidor")
     else:
         print(f"\n {Color.YELLOW}Servidor detenido{Color.END}")
         print_line()
@@ -2019,6 +2020,8 @@ def menu_api_server():
             start_api_server()
     elif choice == '2' and is_running:
         stop_api_server()
+    elif choice == '3' and is_running:
+        restart_api_server()
     elif choice == '0':
         return
     else:
@@ -2149,6 +2152,72 @@ def stop_api_server():
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     menu_api_server()
 
+def restart_api_server():
+    """Reiniciar servidor API sin preguntar puerto"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}REINICIAR SERVIDOR API{Color.END}")
+    print_line()
+    
+    # Obtener puerto actual
+    try:
+        port_file = CONFIG_DIR / 'api_port.txt'
+        if port_file.exists():
+            with open(port_file, 'r') as f:
+                port = f.read().strip()
+        else:
+            port = "9000"
+    except:
+        port = "9000"
+    
+    print(f"\n {Color.YELLOW}⏳ Deteniendo servidor...{Color.END}")
+    
+    try:
+        # Detener servidor
+        subprocess.run(['screen', '-S', 'api_server_individual', '-X', 'quit'], 
+                     stderr=subprocess.DEVNULL)
+        
+        import time
+        time.sleep(1)
+        
+        print(f" {Color.GREEN}✓ Servidor detenido{Color.END}")
+        print(f"\n {Color.YELLOW}⏳ Iniciando servidor en puerto {port}...{Color.END}")
+        
+        # Reiniciar servidor
+        import os
+        api_script = os.path.join(os.path.dirname(__file__), 'api_server.py')
+        
+        subprocess.run([
+            'screen', '-dmS', 'api_server_individual',
+            'python3', api_script, port
+        ])
+        
+        time.sleep(2)
+        
+        # Verificar que inició correctamente
+        check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+        if 'api_server_individual' in check.stdout:
+            print(f" {Color.GREEN}✓ Servidor reiniciado correctamente{Color.END}")
+            
+            try:
+                ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                                         capture_output=True, text=True, timeout=3)
+                server_ip = ip_result.stdout.strip()
+                print(f"\n {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/api/{Color.END}")
+            except:
+                pass
+            
+            moratech.log_action("admin", f"API Server reiniciado en puerto {port}")
+        else:
+            print(f"\n {Color.RED}✗ Error al reiniciar el servidor{Color.END}")
+    
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    menu_api_server()
+
 def view_api_logs():
     """Ver logs del API"""
     clear_screen()
@@ -2213,6 +2282,7 @@ def menu_api_general():
         print_line()
         print(f" {Color.GREEN}[1]{Color.END} ➮ Ver logs")
         print(f" {Color.GREEN}[2]{Color.END} ➮ Detener servidor")
+        print(f" {Color.GREEN}[3]{Color.END} ➮ Reiniciar servidor")
     else:
         print(f"\n {Color.YELLOW}Servidor detenido{Color.END}")
         print_line()
@@ -2231,6 +2301,8 @@ def menu_api_general():
             start_api_general_server()
     elif choice == '2' and is_running:
         stop_api_general_server()
+    elif choice == '3' and is_running:
+        restart_api_general_server()
     elif choice == '0':
         return
     else:
@@ -2348,6 +2420,74 @@ def stop_api_general_server():
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
     menu_api_general()
 
+def restart_api_general_server():
+    """Reiniciar servidor API General sin preguntar puerto"""
+    clear_screen()
+    print_banner()
+    print_line()
+    print(f" {Color.CYAN}REINICIAR API GENERAL{Color.END}")
+    print_line()
+    
+    # Obtener puerto actual
+    try:
+        port_file = CONFIG_DIR / 'api_general_port.txt'
+        if port_file.exists():
+            with open(port_file, 'r') as f:
+                port = f.read().strip()
+        else:
+            port = "9100"
+    except:
+        port = "9100"
+    
+    print(f"\n {Color.YELLOW}⏳ Deteniendo servidor...{Color.END}")
+    
+    try:
+        # Detener servidor
+        subprocess.run(['screen', '-S', 'servidor_global', '-X', 'quit'], 
+                     stderr=subprocess.DEVNULL)
+        
+        import time
+        time.sleep(1)
+        
+        print(f" {Color.GREEN}✓ Servidor detenido{Color.END}")
+        print(f"\n {Color.YELLOW}⏳ Iniciando servidor en puerto {port}...{Color.END}")
+        
+        # Reiniciar servidor
+        import os
+        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+        api_module = 'modules.api_general'
+        
+        cmd = ['python3', '-m', api_module, port]
+        subprocess.run([
+            'screen', '-dmS', 'servidor_global'
+        ] + cmd, cwd=project_root)
+        
+        time.sleep(2)
+        
+        # Verificar que inició correctamente
+        check = subprocess.run(['screen', '-ls'], capture_output=True, text=True)
+        if 'servidor_global' in check.stdout:
+            print(f" {Color.GREEN}✓ Servidor reiniciado correctamente{Color.END}")
+            
+            try:
+                ip_result = subprocess.run(['curl', '-s', 'ifconfig.me'], 
+                                         capture_output=True, text=True, timeout=3)
+                server_ip = ip_result.stdout.strip()
+                print(f"\n {Color.CYAN}Dashboard: {Color.GREEN}http://{server_ip}:{port}/dashboard-global{Color.END}")
+                print(f" {Color.CYAN}Panel Control: {Color.GREEN}http://{server_ip}:{port}/panel-control{Color.END}")
+            except:
+                pass
+            
+            moratech.log_action("admin", f"API General reiniciado en puerto {port}")
+        else:
+            print(f"\n {Color.RED}✗ Error al reiniciar el servidor{Color.END}")
+    
+    except Exception as e:
+        print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
+    
+    input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+    menu_api_general()
+    
 def view_api_general_logs():
     """Ver logs del API General"""
     clear_screen()
