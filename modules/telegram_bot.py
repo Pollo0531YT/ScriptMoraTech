@@ -51,31 +51,6 @@ router = Router()
 # Usuarios autorizados (en memoria)
 authorized_chats = set()
 
-# ==================== ESTADOS FSM ====================
-
-class TokenState(StatesGroup):
-    waiting_for_nombre = State()
-    waiting_for_token = State()
-    waiting_for_dias = State()
-
-class RenovarMState(StatesGroup):
-    waiting_for_token = State()
-    waiting_for_dias = State()
-
-class RenovarState(StatesGroup):
-    waiting_for_token = State()
-    waiting_for_dias = State()
-
-class BorrarState(StatesGroup):
-    waiting_for_token = State()
-
-class AgregarState(StatesGroup):
-    waiting_for_username = State()
-    waiting_for_password = State()
-    waiting_for_dias = State()
-
-class RevisarState(StatesGroup):
-    waiting_for_token = State()
 
 # ==================== HELPERS ====================
 
@@ -149,55 +124,60 @@ async def access_handler(message: Message):
         await message.answer("⛔ Credenciales incorrectas.")
 
 # ==================== /token ====================
-
 @router.message(Command(commands=["token"], ignore_case=True))
-async def token_handler(message: Message, state: FSMContext):
+async def token_handler(message: Message):
     if not is_authorized(message.chat.id):
         await message.answer("⛔ No autorizado. Usa /access primero.")
         return
     
-    await message.answer("📝 Ingresa el **nombre del cliente**:", parse_mode="Markdown")
-    await state.set_state(TokenState.waiting_for_nombre)
-
-@router.message(TokenState.waiting_for_nombre)
-async def token_nombre(message: Message, state: FSMContext):
-    await state.update_data(nombre=message.text.strip())
-    await message.answer("📱 Ahora ingresa el **token**:", parse_mode="Markdown")
-    await state.set_state(TokenState.waiting_for_token)
-
-@router.message(TokenState.waiting_for_token)
-async def token_token(message: Message, state: FSMContext):
-    await state.update_data(token=message.text.strip())
-    await message.answer("⏰ Ingresa los **días de servicio**:", parse_mode="Markdown")
-    await state.set_state(TokenState.waiting_for_dias)
-
-@router.message(TokenState.waiting_for_dias)
-async def token_dias(message: Message, state: FSMContext):
-    try:
-        dias = int(message.text.strip())
-    except ValueError:
-        await message.answer("❌ Debe ser un número.")
+    # /token {nombre} {token} {dias}
+    args = message.text.split()[1:]
+    
+    if len(args) != 3:
+        await message.answer(
+            "❌ Uso: `/token nombre token dias`\n"
+            "Ejemplo: `/token JuanPerez abc123xyz 30`",
+            parse_mode="Markdown"
+        )
         return
     
-    data = await state.get_data()
-    await message.answer("⏳ Creando token...")
+    nombre, token, dias_str = args
     
     try:
+        dias = int(dias_str)
+    except ValueError:
+        await message.answer("❌ Los días deben ser un número.")
+        return
+    
+    await message.answer("⏳ Procesando...")
+    
+    try:
+        # Verificar si ya existe
+        users = load_users()
+        if token in users:
+            await message.answer(
+                f"⚠️ **Token ya existe**\n\n"
+                f"🔑 `{token}`\n"
+                f"Usa `/renovarM {token} {dias}` para renovarlo",
+                parse_mode="Markdown"
+            )
+            return
+        
         token_config = load_token_config()
         success, msg, expires = sincronizar_usuario(
-            username=data['token'],
+            username=token,
             password=token_config['token_password'],
             dias=dias,
             operacion='crear',
             user_type='token',
-            display_name=data['nombre']
+            display_name=nombre
         )
         
         if success:
             await message.answer(
                 f"✅ **Token creado**\n\n"
-                f"👤 Nombre: `{data['nombre']}`\n"
-                f"🔑 Token: `{data['token']}`\n"
+                f"👤 Nombre: `{nombre}`\n"
+                f"🔑 Token: `{token}`\n"
                 f"⏰ Días: `{dias}`\n"
                 f"📅 Expira: `{expires.strftime('%d/%m/%Y')}`",
                 parse_mode="Markdown"
@@ -206,40 +186,49 @@ async def token_dias(message: Message, state: FSMContext):
             await message.answer(f"❌ Error: {msg}")
     except Exception as e:
         await message.answer(f"❌ Error: {str(e)}")
-    
-    await state.clear()
 
 # ==================== /renovarM ====================
-
 @router.message(Command(commands=["renovarM"], ignore_case=True))
-async def renovarM_handler(message: Message, state: FSMContext):
+async def renovarM_handler(message: Message):
     if not is_authorized(message.chat.id):
         await message.answer("⛔ No autorizado.")
         return
     
-    await message.answer("🔑 Ingresa el **token** a renovar:", parse_mode="Markdown")
-    await state.set_state(RenovarMState.waiting_for_token)
-
-@router.message(RenovarMState.waiting_for_token)
-async def renovarM_token(message: Message, state: FSMContext):
-    await state.update_data(token=message.text.strip())
-    await message.answer("⏰ Ingresa los **días a sumar**:", parse_mode="Markdown")
-    await state.set_state(RenovarMState.waiting_for_dias)
-
-@router.message(RenovarMState.waiting_for_dias)
-async def renovarM_dias(message: Message, state: FSMContext):
-    try:
-        dias = int(message.text.strip())
-    except ValueError:
-        await message.answer("❌ Debe ser un número.")
+    # /renovarM {token} {dias}
+    args = message.text.split()[1:]
+    
+    if len(args) != 2:
+        await message.answer(
+            "❌ Uso: `/renovarM token dias`\n"
+            "Ejemplo: `/renovarM abc123xyz 15`",
+            parse_mode="Markdown"
+        )
         return
     
-    data = await state.get_data()
+    token, dias_str = args
+    
+    try:
+        dias = int(dias_str)
+    except ValueError:
+        await message.answer("❌ Los días deben ser un número.")
+        return
+    
     await message.answer("⏳ Renovando...")
     
     try:
+        # Verificar que existe
+        users = load_users()
+        if token not in users:
+            await message.answer(
+                f"❌ **Token no existe**\n\n"
+                f"🔑 `{token}`\n"
+                f"Créalo primero con `/token nombre {token} {dias}`",
+                parse_mode="Markdown"
+            )
+            return
+        
         success, msg, new_date = sincronizar_usuario(
-            username=data['token'],
+            username=token,
             dias=dias,
             operacion='renovar'
         )
@@ -247,7 +236,7 @@ async def renovarM_dias(message: Message, state: FSMContext):
         if success:
             await message.answer(
                 f"✅ **Token renovado**\n\n"
-                f"🔑 Token: `{data['token']}`\n"
+                f"🔑 Token: `{token}`\n"
                 f"➕ Días sumados: `{dias}`\n"
                 f"📅 Expira: `{new_date.strftime('%d/%m/%Y')}`",
                 parse_mode="Markdown"
@@ -256,40 +245,48 @@ async def renovarM_dias(message: Message, state: FSMContext):
             await message.answer(f"❌ Error: {msg}")
     except Exception as e:
         await message.answer(f"❌ Error: {str(e)}")
-    
-    await state.clear()
 
 # ==================== /renovar ====================
-
 @router.message(Command(commands=["renovar"], ignore_case=True))
-async def renovar_handler(message: Message, state: FSMContext):
+async def renovar_handler(message: Message):
     if not is_authorized(message.chat.id):
         await message.answer("⛔ No autorizado.")
         return
     
-    await message.answer("🔑 Ingresa el **token**:", parse_mode="Markdown")
-    await state.set_state(RenovarState.waiting_for_token)
-
-@router.message(RenovarState.waiting_for_token)
-async def renovar_token(message: Message, state: FSMContext):
-    await state.update_data(token=message.text.strip())
-    await message.answer("⏰ Ingresa los **días totales** (reinicia):", parse_mode="Markdown")
-    await state.set_state(RenovarState.waiting_for_dias)
-
-@router.message(RenovarState.waiting_for_dias)
-async def renovar_dias(message: Message, state: FSMContext):
-    try:
-        dias = int(message.text.strip())
-    except ValueError:
-        await message.answer("❌ Debe ser un número.")
+    # /renovar {token} {dias}
+    args = message.text.split()[1:]
+    
+    if len(args) != 2:
+        await message.answer(
+            "❌ Uso: `/renovar token dias`\n"
+            "Ejemplo: `/renovar abc123xyz 30`",
+            parse_mode="Markdown"
+        )
         return
     
-    data = await state.get_data()
+    token, dias_str = args
+    
+    try:
+        dias = int(dias_str)
+    except ValueError:
+        await message.answer("❌ Los días deben ser un número.")
+        return
+    
     await message.answer("⏳ Reiniciando...")
     
     try:
+        # Verificar que existe
+        users = load_users()
+        if token not in users:
+            await message.answer(
+                f"❌ **Token no existe**\n\n"
+                f"Créalo primero con `/token nombre {token} {dias}`",
+                parse_mode="Markdown"
+            )
+            return
+        
         success, msg, new_date = sincronizar_usuario(
-            username=data['token'],
+            username=token,
             dias=dias,
             operacion='reiniciar'
         )
@@ -297,7 +294,7 @@ async def renovar_dias(message: Message, state: FSMContext):
         if success:
             await message.answer(
                 f"✅ **Token reiniciado**\n\n"
-                f"🔑 Token: `{data['token']}`\n"
+                f"🔑 Token: `{token}`\n"
                 f"🔄 Días: `{dias}`\n"
                 f"📅 Expira: `{new_date.strftime('%d/%m/%Y')}`",
                 parse_mode="Markdown"
@@ -306,86 +303,83 @@ async def renovar_dias(message: Message, state: FSMContext):
             await message.answer(f"❌ Error: {msg}")
     except Exception as e:
         await message.answer(f"❌ Error: {str(e)}")
-    
-    await state.clear()
 
 # ==================== /borrar ====================
-
 @router.message(Command(commands=["borrar"], ignore_case=True))
-async def borrar_handler(message: Message, state: FSMContext):
+async def borrar_handler(message: Message):
     if not is_authorized(message.chat.id):
         await message.answer("⛔ No autorizado.")
         return
     
-    await message.answer("🔑 Ingresa el **token** a eliminar:", parse_mode="Markdown")
-    await state.set_state(BorrarState.waiting_for_token)
-
-@router.message(BorrarState.waiting_for_token)
-async def borrar_token(message: Message, state: FSMContext):
-    token = message.text.strip()
+    # /borrar {token}
+    args = message.text.split()[1:]
+    
+    if len(args) != 1:
+        await message.answer(
+            "❌ Uso: `/borrar token`\n"
+            "Ejemplo: `/borrar abc123xyz`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    token = args[0]
     await message.answer("⏳ Eliminando...")
     
     try:
         success, msg = ejecutar_borrado_fisico(token)
         
         if success:
-            await message.answer(f"✅ **Token eliminado**\n\n🔑 `{token}`", parse_mode="Markdown")
+            await message.answer(f"✅ **Eliminado**\n\n🔑 `{token}`", parse_mode="Markdown")
         else:
             await message.answer(f"❌ Error: {msg}")
     except Exception as e:
         await message.answer(f"❌ Error: {str(e)}")
-    
-    await state.clear()
 
 # ==================== /agregar ====================
-
 @router.message(Command(commands=["agregar"], ignore_case=True))
-async def agregar_handler(message: Message, state: FSMContext):
+async def agregar_handler(message: Message):
     if not is_authorized(message.chat.id):
         await message.answer("⛔ No autorizado.")
         return
     
-    await message.answer("👤 Ingresa el **nombre de usuario**:", parse_mode="Markdown")
-    await state.set_state(AgregarState.waiting_for_username)
-
-@router.message(AgregarState.waiting_for_username)
-async def agregar_username(message: Message, state: FSMContext):
-    await state.update_data(username=message.text.strip())
-    await message.answer("🔒 Ingresa la **contraseña**:", parse_mode="Markdown")
-    await state.set_state(AgregarState.waiting_for_password)
-
-@router.message(AgregarState.waiting_for_password)
-async def agregar_password(message: Message, state: FSMContext):
-    await state.update_data(password=message.text.strip())
-    await message.answer("⏰ Ingresa los **días**:", parse_mode="Markdown")
-    await state.set_state(AgregarState.waiting_for_dias)
-
-@router.message(AgregarState.waiting_for_dias)
-async def agregar_dias(message: Message, state: FSMContext):
-    try:
-        dias = int(message.text.strip())
-    except ValueError:
-        await message.answer("❌ Debe ser un número.")
+    # /agregar {user} {password} {conexiones} {dias}
+    args = message.text.split()[1:]
+    
+    if len(args) != 4:
+        await message.answer(
+            "❌ Uso: `/agregar user password conexiones dias`\n"
+            "Ejemplo: `/agregar juan123 Pass2026 2 30`",
+            parse_mode="Markdown"
+        )
         return
     
-    data = await state.get_data()
+    username, password, max_conn_str, dias_str = args
+    
+    try:
+        max_conn = int(max_conn_str)
+        dias = int(dias_str)
+    except ValueError:
+        await message.answer("❌ Conexiones y días deben ser números.")
+        return
+    
     await message.answer("⏳ Creando usuario SSH...")
     
     try:
         success, msg, expires = sincronizar_usuario(
-            username=data['username'],
-            password=data['password'],
+            username=username,
+            password=password,
             dias=dias,
             operacion='crear',
             user_type='ssh',
-            max_conn=1
+            max_conn=max_conn
         )
         
         if success:
             await message.answer(
                 f"✅ **Usuario SSH creado**\n\n"
-                f"👤 Usuario: `{data['username']}`\n"
-                f"🔒 Contraseña: `{data['password']}`\n"
+                f"👤 Usuario: `{username}`\n"
+                f"🔒 Contraseña: `{password}`\n"
+                f"🔗 Conexiones: `{max_conn}`\n"
                 f"⏰ Días: `{dias}`\n"
                 f"📅 Expira: `{expires.strftime('%d/%m/%Y')}`",
                 parse_mode="Markdown"
@@ -394,23 +388,26 @@ async def agregar_dias(message: Message, state: FSMContext):
             await message.answer(f"❌ Error: {msg}")
     except Exception as e:
         await message.answer(f"❌ Error: {str(e)}")
-    
-    await state.clear()
 
 # ==================== /revisar ====================
-
 @router.message(Command(commands=["revisar"], ignore_case=True))
-async def revisar_handler(message: Message, state: FSMContext):
+async def revisar_handler(message: Message):
     if not is_authorized(message.chat.id):
         await message.answer("⛔ No autorizado.")
         return
     
-    await message.answer("🔑 Ingresa el **token**:", parse_mode="Markdown")
-    await state.set_state(RevisarState.waiting_for_token)
-
-@router.message(RevisarState.waiting_for_token)
-async def revisar_token(message: Message, state: FSMContext):
-    token = message.text.strip()
+    # /revisar {token}
+    args = message.text.split()[1:]
+    
+    if len(args) != 1:
+        await message.answer(
+            "❌ Uso: `/revisar token`\n"
+            "Ejemplo: `/revisar abc123xyz`",
+            parse_mode="Markdown"
+        )
+        return
+    
+    token = args[0]
     await message.answer("⏳ Consultando...")
     
     try:
@@ -418,7 +415,6 @@ async def revisar_token(message: Message, state: FSMContext):
         
         if token not in users:
             await message.answer(f"❌ Token `{token}` no encontrado.", parse_mode="Markdown")
-            await state.clear()
             return
         
         expires_str = users[token].get('expires')
@@ -438,8 +434,6 @@ async def revisar_token(message: Message, state: FSMContext):
         )
     except Exception as e:
         await message.answer(f"❌ Error: {str(e)}")
-    
-    await state.clear()
 
 # ==================== MAIN ====================
 
