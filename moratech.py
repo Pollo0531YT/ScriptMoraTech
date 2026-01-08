@@ -14,7 +14,7 @@ import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from modules import common, extras, users as users_module, ssl, phyton, badvpn, v2ray, slowdns
+from modules import common, extras, users as users_module, ssl_protocol, phyton, badvpn, v2ray, slowdns
 
 # Colores para terminal
 class Color:
@@ -321,7 +321,7 @@ def protocols_menu():
 
         choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
         if choice == '1':
-            ssl.menu_ssl()
+            ssl_protocol.menu_ssl()
         elif choice == '2':
             phyton.menu_phyton()
         elif choice == '3':
