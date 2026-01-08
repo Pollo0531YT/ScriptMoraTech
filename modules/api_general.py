@@ -223,7 +223,7 @@ def api_borrar_token():
     data = request.get_json() or {}
     token = data.get('token')
     vps_ids = data.get('vps_ids', [])
-    origen = data.get('orgen')
+    origen = data.get('origen')
 
     if not token:
         return jsonify({'error': 'Token requerido'}), 400
