@@ -168,7 +168,7 @@ def api_agregar_token():
             enviar_notificacion_telegram('token_creado', {
                 'nombre': nombre,
                 'token': token,
-                'dias': days + 1,  # Visual +1
+                'dias': days,
                 'expira': expires.strftime('%d/%m/%Y'),
                 'origen': origen,
                 'referencia': referencia
