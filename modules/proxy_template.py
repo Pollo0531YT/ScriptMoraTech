@@ -5,106 +5,285 @@ Template del Proxy Python - MORATECH
 Este archivo es solo una plantilla, no se ejecuta directamente
 """
 
-PROXY_SCRIPT = """#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-import socket
-try:
-    import thread
-except ImportError:
-    import _thread as thread
+PROXY_SCRIPT = """#!/usr/bin/env python
+# encoding: utf-8
+import socket, threading, thread, select, signal, sys, time, getopt
 
+# Listen
 LISTENING_ADDR = '0.0.0.0'
-LISTENING_PORT = {port}
+if sys.argv[1:]:
+  LISTENING_PORT = sys.argv[1]
+else:
+  LISTENING_PORT = 80  
+#Pass
 PASS = ''
+# CONST
+BUFLEN = 4096 * 4
+TIMEOUT = 60
+DEFAULT_HOST = '127.0.0.1:22'
+MSG = '<span style=color: #ff0000;><strong><span style=color: #ff0000;>A</span><span style=color: #ff9900;>D</span><span style=color: #008000;>M</span><span style=color: #0000ff;>c</span><span style=color: #ff0000;>g</span><span style=color: #ff9900;>h</span><span style=color: #008000;>+</span></strong></span>'
+STATUS_RESP = '101'
+FTAG = '\\r\\nContent-length: 0\\r\\n\\r\\nHTTP/1.1 200 Connection Established\\r\\n\\r\\n'
 
-BUFLEN = 8196 * 8
+if STATUS_RESP == '101':
+    STATUS_TXT = '<font color="green">Web Socket Protocol</font>'
+else:
+    STATUS_TXT = '<font color="red">Connection established</font>'
 
-def forward(dst, target):
-    soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    soc.connect(target)
-    
-    def recv(source, dest):
-        string = ' '
-        while True:
-            try:
-                data = source.recv(BUFLEN)
-            except:
-                break
-            if not data: break
-            dest.sendall(data)
-        source.close()
-        dest.close()
-    
-    thread.start_new_thread(recv, (dst, soc))
-    thread.start_new_thread(recv, (soc, dst))
+#RESPONSE = "HTTP/1.1 " + str(STATUS_RESP) + ' ' + str(STATUS_TXT) + ' ' +  str(MSG) + ' ' +  str(FTAG)
+RESPONSE = "HTTP/1.1 " + str(STATUS_RESP) + ' ' +  str(MSG) + ' ' +  str(FTAG)
 
-class ServerThread:
-    def __init__(self, conn, addr):
-        self.conn = conn
-        self.addr = addr
+
+class Server(threading.Thread):
+    def __init__(self, host, port):
+        threading.Thread.__init__(self)
+        self.running = False
+        self.host = host
+        self.port = port
+        self.threads = []
+        self.threadsLock = threading.Lock()
+        self.logLock = threading.Lock()
 
     def run(self):
-        first_data = self.conn.recv(BUFLEN)
-        
-        if not first_data:
-            self.conn.close()
-            return
+        self.soc = socket.socket(socket.AF_INET)
+        self.soc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self.soc.settimeout(2)
+        intport = int(self.port)
+        self.soc.bind((self.host, intport))
+        self.soc.listen(0)
+        self.running = True
 
-        first_line = first_data.split(b'\\n')[0].decode('utf-8', errors='ignore')
-        parts = first_line.split(' ')
-        if len(parts) < 2:
-            self.conn.close()
-            return
-            
-        url = parts[1]
-        
-        http_pos = url.find("://")
-        if http_pos == -1:
-            temp = url
-        else:
-            temp = url[(http_pos + 3):]
-        
-        port_pos = temp.find(":")
-        webserver_pos = temp.find("/")
-        
-        if webserver_pos == -1:
-            webserver_pos = len(temp)
-        
-        webserver = ""
-        port = -1
-        
-        if port_pos == -1 or webserver_pos < port_pos:
-            port = 22
-            webserver = temp[:webserver_pos]
-        else:
-            try:
-                port = int((temp[(port_pos + 1):])[:webserver_pos - port_pos - 1])
-            except:
-                port = 22
-            webserver = temp[:port_pos]
-        
         try:
-            forward(self.conn, (webserver, port))
-        except Exception as e:
-            self.conn.close()
+            while self.running:
+                try:
+                    c, addr = self.soc.accept()
+                    c.setblocking(1)
+                except socket.timeout:
+                    continue
 
-def start_server():
-    soc = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    soc.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    soc.bind((LISTENING_ADDR, LISTENING_PORT))
-    soc.listen(0)
-    
-    print("[*] Server started on %s:%d" % (LISTENING_ADDR, LISTENING_PORT))
+                conn = ConnectionHandler(c, self, addr)
+                conn.start()
+                self.addConn(conn)
+        finally:
+            self.running = False
+            self.soc.close()
+
+    def printLog(self, log):
+        self.logLock.acquire()
+        print log
+        self.logLock.release()
+
+    def addConn(self, conn):
+        try:
+            self.threadsLock.acquire()
+            if self.running:
+                self.threads.append(conn)
+        finally:
+            self.threadsLock.release()
+
+    def removeConn(self, conn):
+        try:
+            self.threadsLock.acquire()
+            self.threads.remove(conn)
+        finally:
+            self.threadsLock.release()
+
+    def close(self):
+        try:
+            self.running = False
+            self.threadsLock.acquire()
+
+            threads = list(self.threads)
+            for c in threads:
+                c.close()
+        finally:
+            self.threadsLock.release()
+
+
+class ConnectionHandler(threading.Thread):
+    def __init__(self, socClient, server, addr):
+        threading.Thread.__init__(self)
+        self.clientClosed = False
+        self.targetClosed = True
+        self.client = socClient
+        self.client_buffer = ''
+        self.server = server
+        self.log = 'Connection: ' + str(addr)
+
+    def close(self):
+        try:
+            if not self.clientClosed:
+                self.client.shutdown(socket.SHUT_RDWR)
+                self.client.close()
+        except:
+            pass
+        finally:
+            self.clientClosed = True
+
+        try:
+            if not self.targetClosed:
+                self.target.shutdown(socket.SHUT_RDWR)
+                self.target.close()
+        except:
+            pass
+        finally:
+            self.targetClosed = True
+
+    def run(self):
+        try:
+            self.client_buffer = self.client.recv(BUFLEN)
+
+            hostPort = self.findHeader(self.client_buffer, 'X-Real-Host')
+
+            if hostPort == '':
+                hostPort = DEFAULT_HOST
+
+            split = self.findHeader(self.client_buffer, 'X-Split')
+
+            if split != '':
+                self.client.recv(BUFLEN)
+
+            if hostPort != '':
+                passwd = self.findHeader(self.client_buffer, 'X-Pass')
+                
+                if len(PASS) != 0 and passwd == PASS:
+                    self.method_CONNECT(hostPort)
+                elif len(PASS) != 0 and passwd != PASS:
+                    self.client.send('HTTP/1.1 400 WrongPass!\\r\\n\\r\\n')
+                elif hostPort.startswith('127.0.0.1') or hostPort.startswith('localhost'):
+                    self.method_CONNECT(hostPort)
+                else:
+                    self.client.send('HTTP/1.1 403 Forbidden!\\r\\n\\r\\n')
+            else:
+                print '- No X-Real-Host!'
+                self.client.send('HTTP/1.1 400 NoXRealHost!\\r\\n\\r\\n')
+
+        except Exception as e:
+            self.log += ' - error: ' + e.strerror
+            self.server.printLog(self.log)
+            pass
+        finally:
+            self.close()
+            self.server.removeConn(self)
+
+    def findHeader(self, head, header):
+        aux = head.find(header + ': ')
+
+        if aux == -1:
+            return ''
+
+        aux = head.find(':', aux)
+        head = head[aux+2:]
+        aux = head.find('\\r\\n')
+
+        if aux == -1:
+            return ''
+
+        return head[:aux];
+
+    def connect_target(self, host):
+        i = host.find(':')
+        if i != -1:
+            port = int(host[i+1:])
+            host = host[:i]
+        else:
+            if self.method=='CONNECT':
+                port = 22
+            else:
+                port = sys.argv[1]
+
+        (soc_family, soc_type, proto, _, address) = socket.getaddrinfo(host, port)[0]
+
+        self.target = socket.socket(soc_family, soc_type, proto)
+        self.targetClosed = False
+        self.target.connect(address)
+
+    def method_CONNECT(self, path):
+        self.log += ' - CONNECT ' + path
+
+        self.connect_target(path)
+        self.client.sendall(RESPONSE)
+        self.client_buffer = ''
+
+        self.server.printLog(self.log)
+        self.doCONNECT()
+
+    def doCONNECT(self):
+        socs = [self.client, self.target]
+        count = 0
+        error = False
+        while True:
+            count += 1
+            (recv, _, err) = select.select(socs, [], socs, 3)
+            if err:
+                error = True
+            if recv:
+                for in_ in recv:
+                    try:
+                        data = in_.recv(BUFLEN)
+                        if data:
+                            if in_ is self.target:
+                                self.client.send(data)
+                            else:
+                                while data:
+                                    byte = self.target.send(data)
+                                    data = data[byte:]
+
+                            count = 0
+                        else:
+                            break
+                    except:
+                        error = True
+                        break
+            if count == TIMEOUT:
+                error = True
+            if error:
+                break
+
+
+def print_usage():
+    print 'Usage: proxy.py -p <port>'
+    print '       proxy.py -b <bindAddr> -p <port>'
+    print '       proxy.py -b 0.0.0.0 -p 80'
+
+def parse_args(argv):
+    global LISTENING_ADDR
+    global LISTENING_PORT
     
     try:
-        while True:
-            conn, addr = soc.accept()
-            t = ServerThread(conn, addr)
-            thread.start_new_thread(t.run, ())
-    except KeyboardInterrupt:
-        print("\\n[*] Shutting down...")
-        soc.close()
+        opts, args = getopt.getopt(argv,"hb:p:",["bind=","port="])
+    except getopt.GetoptError:
+        print_usage()
+        sys.exit(2)
+    for opt, arg in opts:
+        if opt == '-h':
+            print_usage()
+            sys.exit()
+        elif opt in ("-b", "--bind"):
+            LISTENING_ADDR = arg
+        elif opt in ("-p", "--port"):
+            LISTENING_PORT = int(arg)
 
+
+def main(host=LISTENING_ADDR, port=LISTENING_PORT):
+    
+    print "\\033[0;34m•"*8,"\\033[1;32m PROXY PYTHON WEBSOCKET","\\033[0;34m•"*8,"\\n"
+    print "\\033[1;33mIP:\\033[1;32m " + LISTENING_ADDR
+    print "\\033[1;33mPORTA:\\033[1;32m " + str(LISTENING_PORT) + "\\n"
+    print "\\033[0;34m•"*10,"\\033[1;32m ChumoGH ADMcgh Plus","\\033[0;34m•\\033[1;37m"*11,"\\n"
+    
+    server = Server(LISTENING_ADDR, LISTENING_PORT)
+    server.start()
+
+    while True:
+        try:
+            time.sleep(2)
+        except KeyboardInterrupt:
+            print 'Parando...'
+            server.close()
+            break
+    
 if __name__ == '__main__':
-    start_server()
+    parse_args(sys.argv[1:])
+    main()
 """
