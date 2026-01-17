@@ -151,13 +151,11 @@ def install_proxy():
 
         print(f"\n {Color.YELLOW}Puerto SSH detectado: 22{Color.END}")
 
-        # 5) Escribir script proxy (igual que tu original)
+        # 5) Escribir script proxy desde template
+        from modules.proxy_template import PROXY_SCRIPT
         proxy_path = Path('/root/proxy.py')
-        proxy_script = f"""#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-# (el contenido original del proxy va aquí)
-# LISTENING_PORT = {port}
-"""
+        proxy_script = PROXY_SCRIPT.format(port=port)
+
         # Para no cambiar tu script, guardamos exactamente el original que tengas.
         # Si quieres, reemplazo el contenido completo aquí.
         with open(proxy_path, 'w') as f:
