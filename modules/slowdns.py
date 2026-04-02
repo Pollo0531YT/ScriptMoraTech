@@ -402,7 +402,6 @@ def menu_slowdns():
             print(f" {Color.GREEN}3.{Color.END} Info")
             print(f" {Color.GREEN}4.{Color.END} Ver logs")
             print(f" {Color.GREEN}5.{Color.END} Desinstalar (elimina binarios & units)")
-            print(f" {Color.GREEN}6.{Color.END} Reiniciar servidor")
             print(f" {Color.GREEN}0.{Color.END} Volver")
             print_line()
 
@@ -455,16 +454,6 @@ def menu_slowdns():
                     input(f"\n{Color.CYAN}Hecho. Presiona Enter...{Color.END}")
                 else:
                     print(f"{Color.YELLOW}Cancelado.{Color.END}")
-                    time.sleep(0.6)
-            elif choice == "6":
-                confirm = input(f"{Color.RED}¿Reiniciar ESTE SERVIDOR AHORA? (s/N): {Color.END}").strip().lower()
-                if confirm == "s":
-                    print(f"\n {Color.YELLOW}Reiniciando...{Color.END}")
-                    run(["reboot"])
-                    # si reboot falla por permiso, lo notifica y vuelve
-                    time.sleep(3)
-                else:
-                    print(f"{Color.YELLOW}Reinicio cancelado.{Color.END}")
                     time.sleep(0.6)
             elif choice == "0":
                 break
