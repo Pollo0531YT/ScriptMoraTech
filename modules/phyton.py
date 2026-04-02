@@ -9,6 +9,7 @@ from pathlib import Path
 
 from modules.common import Color, PROTOCOLS_FILE, clear_screen, print_banner, print_line
 import moratech
+from modules import autostart
 
 def menu_phyton():
     """Menu de phyton"""
@@ -216,6 +217,7 @@ def install_proxy():
         print(f" {Color.YELLOW}Para ver logs: screen -r pythonwe{Color.END}")
 
         moratech.log_action("admin", f"Proxy Python configurado en puerto {port}")
+        autostart.register('proxy', port=int(port))
 
     except Exception as e:
         print(f"\n {Color.RED}✗ Error durante la instalación: {str(e)}{Color.END}")
@@ -367,6 +369,7 @@ def stop_proxy():
                 pass
             print(f"\n {Color.GREEN}✓ Todos los proxies detenidos{Color.END}")
             moratech.log_action("admin", "Todos los proxies detenidos")
+            autostart.unregister('proxy')
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
 
@@ -395,6 +398,7 @@ def stop_proxy():
 
                 print(f"\n {Color.GREEN}✓ Proxy en puerto {port} detenido{Color.END}")
                 moratech.log_action("admin", f"Proxy puerto {port} detenido")
+                autostart.unregister('proxy')
             else:
                 print(f" {Color.RED}✗ Opción inválida{Color.END}")
         except ValueError:

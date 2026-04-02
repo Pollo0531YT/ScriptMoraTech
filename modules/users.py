@@ -11,6 +11,7 @@ from pathlib import Path
 
 from modules.common import Color, PROTOCOLS_FILE, clear_screen, print_banner, print_line
 import moratech
+from modules import autostart
 
 CONFIG_DIR = Path.home() / '.moratech'
 TOKEN_CONFIG_FILE = CONFIG_DIR / 'token_config.json'
@@ -1963,6 +1964,7 @@ def start_checkuser_server():
         print(f" {Color.YELLOW}Para ver logs: opción [1] en el menú{Color.END}")
         
         moratech.log_action("admin", f"CheckUser Online iniciado en puerto {port}")
+        autostart.register('checkuser', port=int(port))
         
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
@@ -1989,6 +1991,7 @@ def stop_checkuser_server():
             
             print(f"\n {Color.GREEN}✓ Servidor detenido{Color.END}")
             moratech.log_action("admin", "CheckUser Online detenido")
+            autostart.unregister('checkuser')
             
         except Exception as e:
             print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
@@ -2179,6 +2182,7 @@ def start_api_server():
         print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/api/{Color.END}")
         
         moratech.log_action("admin", f"API Server '{vps_name}' iniciado en puerto {port}")
+        autostart.register('api_server', port=int(port))
         
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
@@ -2204,6 +2208,7 @@ def stop_api_server():
                          stderr=subprocess.DEVNULL)
             print(f"\n {Color.GREEN}✓ Servidor detenido{Color.END}")
             moratech.log_action("admin", "API Server detenido")
+            autostart.unregister('api_server')
         except Exception as e:
             print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
     else:
@@ -2449,6 +2454,7 @@ def start_api_general_server():
         print(f" {Color.CYAN}Panel Control: {Color.GREEN}http://{server_ip}:{port}/panel-control{Color.END}")
         
         moratech.log_action("admin", f"API General iniciado en puerto {port}")
+        autostart.register('api_general', port=int(port))
         
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
@@ -2472,6 +2478,7 @@ def stop_api_general_server():
                          stderr=subprocess.DEVNULL)
             print(f"\n {Color.GREEN}✓ API General detenido{Color.END}")
             moratech.log_action("admin", "API General detenido")
+            autostart.unregister('api_general')
         except Exception as e:
             print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
     else:
@@ -2791,6 +2798,7 @@ def _launch_bot(bot_file, bot_username=None, access_user=None, access_password=N
             print(f" {Color.CYAN}═══════════════════════════════════════{Color.END}")
         
         moratech.log_action("admin", "Bot de Telegram iniciado")
+        autostart.register('telegram_bot')
         
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
@@ -2815,6 +2823,7 @@ def stop_bot_telegram():
                          stderr=subprocess.DEVNULL)
             print(f"\n {Color.GREEN}✓ Bot detenido{Color.END}")
             moratech.log_action("admin", "Bot de Telegram detenido")
+            autostart.unregister('telegram_bot')
         except Exception as e:
             print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
     else:

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from modules.common import Color, PROTOCOLS_FILE, clear_screen, print_banner, print_line
 import moratech
+from modules import autostart
 
 def menu_badvpn():
     """Menú de BadVPN"""
@@ -124,8 +125,9 @@ def install_badvpn():
         
         # Iniciar en screen
         screen_name = f'badvpn_{port}'
-        subprocess.run(['screen', '-dmS', screen_name, 
-                       'badvpn-udpgw', '--listen-addr', f'127.0.0.1:{port}'])
+        subprocess.run(['screen', '-dmS', screen_name,
+                       'badvpn-udpgw', '--listen-addr', f'127.0.0.1:{port}'],
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
         import time
         time.sleep(2)
@@ -136,7 +138,7 @@ def install_badvpn():
             print(f" {Color.GREEN}✓ BadVPN iniciado en screen ({screen_name}){Color.END}")
         
         # Verificar puerto
-        result = subprocess.run(['netstat', '-tlnp'], capture_output=True, text=True)
+        result = subprocess.run(['ss', '-tlnp'], capture_output=True, text=True)
         if f'127.0.0.1:{port}' in result.stdout:
             print(f" {Color.GREEN}✓ Puerto {port} escuchando correctamente{Color.END}")
         
@@ -177,6 +179,7 @@ def install_badvpn():
         print(f"\n {Color.GREEN}✓ BadVPN instalado en puerto {port}{Color.END}")
         print(f" {Color.CYAN}Para llamadas y juegos UDP{Color.END}")
         moratech.log_action("admin", f"BadVPN instalado en puerto {port}")
+        autostart.register('badvpn', port=int(port))
         
     except Exception as e:
         print(f"\n {Color.RED}✗ Error: {e}{Color.END}")
@@ -252,6 +255,7 @@ def stop_badvpn():
             
             print(f"\n {Color.GREEN}✓ Todas las instancias de BadVPN detenidas{Color.END}")
             moratech.log_action("admin", "Todas las instancias de BadVPN detenidas")
+            autostart.unregister('badvpn')
             
         else:
             # Detener instancia específica
@@ -282,6 +286,7 @@ def stop_badvpn():
                     
                     print(f"\n {Color.GREEN}✓ BadVPN en puerto {port} detenido{Color.END}")
                     moratech.log_action("admin", f"BadVPN puerto {port} detenido")
+                    autostart.unregister('badvpn', port=port)
                 else:
                     print(f" {Color.RED}✗ Opción inválida{Color.END}")
             except ValueError:

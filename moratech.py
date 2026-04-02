@@ -14,7 +14,7 @@ import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from modules import common, extras, users as users_module, ssl_protocol, phyton, badvpn, v2ray, slowdns
+from modules import common, extras, users as users_module, ssl_protocol, phyton, badvpn, v2ray, slowdns, autostart
 
 # Colores para terminal
 class Color:
@@ -140,27 +140,35 @@ def get_active_ports():
         if ':22 ' in output or ':22\n' in output:
             add_port('SSH', '22')
 
-        # Detectar SSL/Stunnel
+        # Detectar SSL/Stunnel - leer stunnel.conf directamente (más confiable que ss)
         stunnel_check = subprocess.run(['pgrep', '-f', 'stunnel'], capture_output=True, text=True)
         if stunnel_check.stdout.strip():
             ssl_ports = []
-            for line in output.split('\n'):
-                if 'stunnel' in line:
-                    match = re.search(r':(\d+)\s', line)
-                    if match:
-                        ssl_ports.append(match.group(1))
+            stunnel_conf = Path('/etc/stunnel/stunnel.conf')
+            if stunnel_conf.exists():
+                txt = stunnel_conf.read_text(errors='ignore')
+                ssl_ports = re.findall(r'accept\s*=\s*(\d+)', txt)
+            else:
+                for line in output.split('\n'):
+                    if 'stunnel' in line:
+                        match = re.search(r':(\d+)\s', line)
+                        if match:
+                            ssl_ports.append(match.group(1))
             for port in sorted(set(ssl_ports)):
                 add_port('SSL', port)
 
-        # Detectar Proxy Python
+        # Detectar Proxy Python - buscar por PID en ss (ss muestra 'python2', no 'proxy.py')
         proxy_check = subprocess.run(['pgrep', '-f', 'proxy.py'], capture_output=True, text=True)
         if proxy_check.stdout.strip():
+            proxy_pids = [p.strip() for p in proxy_check.stdout.splitlines() if p.strip()]
             proxy_ports = []
             for line in output.split('\n'):
-                if 'python' in line.lower() and 'proxy' in line:
-                    match = re.search(r':(\d+)\s', line)
-                    if match and match.group(1) != '22':
-                        proxy_ports.append(match.group(1))
+                for pid in proxy_pids:
+                    if f'pid={pid},' in line or f'pid={pid})' in line:
+                        match = re.search(r':(\d+)\s', line)
+                        if match and match.group(1) != '22':
+                            proxy_ports.append(match.group(1))
+                        break
             for port in sorted(set(proxy_ports)):
                 add_port('Proxy', port)
 
@@ -317,6 +325,9 @@ def protocols_menu():
         print(f"{Color.GREEN}6.{Color.END} ➮ EXTRAS")
 
         print_line()
+        print(f"{Color.GREEN}7.{Color.END} ➮ AUTOSTART (reinicio VPS)")
+
+        print_line()
         print(f"{Color.GREEN}0.{Color.END} Volver")
 
         choice = input(f"\n{Color.YELLOW}Selecciona: {Color.END}").strip()
@@ -332,6 +343,8 @@ def protocols_menu():
             badvpn.menu_badvpn()
         elif choice == '6':
             extras.menu_extras()
+        elif choice == '7':
+            autostart.menu_autostart()
         elif choice == '0':
             break
         else:
@@ -441,8 +454,12 @@ def main_menu(username):
 
 def main():
     """Función principal"""
-    init_system()
-    main_menu("admin")
+    try:
+        init_system()
+        main_menu("admin")
+    except KeyboardInterrupt:
+        print(f"\n\n {Color.GREEN}¡Hasta pronto!{Color.END}\n")
+        sys.exit(0)
 
 
 if __name__ == "__main__":
