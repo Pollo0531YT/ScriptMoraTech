@@ -248,24 +248,36 @@ def stop_proxy():
             except Exception:
                 return None
 
-        # pgrep first (fast)
+        # pgrep: buscar procesos python que corren proxy.py (excluir screen)
+        ps_out = safe_run(['ps', 'aux'])
+        ps_lines = ps_out.stdout.splitlines() if ps_out and ps_out.stdout else []
+
         for pattern in ['pythonwe', 'proxy.py']:
             r = safe_run(['pgrep', '-f', pattern])
             if r and r.stdout.strip():
                 for ln in r.stdout.splitlines():
                     ln = ln.strip()
-                    if ln.isdigit():
-                        pids.add(ln)
+                    if not ln.isdigit():
+                        continue
+                    # Excluir si el proceso es screen (no python)
+                    for ps_line in ps_lines:
+                        parts = ps_line.split()
+                        if len(parts) >= 11 and parts[1] == ln:
+                            cmd = parts[10].lower()
+                            if 'screen' not in cmd:
+                                pids.add(ln)
+                            break
 
-        # fallback: ps aux search
+        # fallback: ps aux search (excluir screen y grep)
         if not pids:
-            r = safe_run(['ps', 'aux'])
-            if r and r.stdout:
-                for line in r.stdout.splitlines():
-                    if ('proxy.py' in line or 'pythonwe' in line) and 'grep' not in line:
-                        parts = line.split()
-                        if len(parts) >= 2 and parts[1].isdigit():
-                            pids.add(parts[1])
+            for line in ps_lines:
+                parts = line.split()
+                if len(parts) < 11:
+                    continue
+                cmd = parts[10].lower()
+                if ('proxy.py' in line or 'pythonwe' in line) and 'grep' not in cmd and 'screen' not in cmd:
+                    if parts[1].isdigit():
+                        pids.add(parts[1])
 
         if not pids:
             print(f"\n {Color.YELLOW}No hay proxies Python activos (no se encontraron pids){Color.END}")

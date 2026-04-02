@@ -90,15 +90,23 @@ def _start_service(name, config):
     try:
         if name == 'proxy':
             port = config.get('port', 80)
-            python_bin = 'python2' if _has('python2') else ('python' if _has('python') else None)
-            if python_bin and Path('/root/proxy.py').exists():
+            if not Path('/root/proxy.py').exists():
+                return
+            # Buscar python2/python con rutas absolutas (systemd no hereda PATH completo)
+            python_bin = None
+            for candidate in ['/usr/bin/python2', '/usr/bin/python', '/usr/local/bin/python2', '/usr/local/bin/python']:
+                if Path(candidate).exists():
+                    python_bin = candidate
+                    break
+            if not python_bin:
+                python_bin = _has('python2') or _has('python')
+            if python_bin:
                 subprocess.run(
-                    ['screen', '-dmS', 'pythonwe', python_bin, '/root/proxy.py'],
+                    ['/usr/bin/screen', '-dmS', 'pythonwe', python_bin, '/root/proxy.py'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
                 )
-                # Abrir puerto en caso de que iptables se haya reseteado
                 subprocess.run(
-                    ['iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', str(port), '-j', 'ACCEPT'],
+                    ['/sbin/iptables', '-I', 'INPUT', '-p', 'tcp', '--dport', str(port), '-j', 'ACCEPT'],
                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
                 )
 
@@ -187,6 +195,8 @@ User=root
 RemainAfterExit=yes
 StandardOutput=journal
 StandardError=journal
+Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+Environment="HOME=/root"
 
 [Install]
 WantedBy=multi-user.target
