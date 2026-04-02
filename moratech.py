@@ -140,15 +140,26 @@ def get_active_ports():
         if ':22 ' in output or ':22\n' in output:
             add_port('SSH', '22')
 
-        # Detectar SSL/Stunnel - leer stunnel.conf directamente (más confiable que ss)
+        # Detectar SSL/Stunnel
+        # Verificar si stunnel está corriendo (pgrep o systemctl)
+        stunnel_running = False
         stunnel_check = subprocess.run(['pgrep', '-f', 'stunnel'], capture_output=True, text=True)
         if stunnel_check.stdout.strip():
+            stunnel_running = True
+        else:
+            svc_check = subprocess.run(['systemctl', 'is-active', 'stunnel4'], capture_output=True, text=True)
+            if svc_check.stdout.strip() == 'active':
+                stunnel_running = True
+
+        if stunnel_running:
             ssl_ports = []
             stunnel_conf = Path('/etc/stunnel/stunnel.conf')
             if stunnel_conf.exists():
                 txt = stunnel_conf.read_text(errors='ignore')
-                ssl_ports = re.findall(r'accept\s*=\s*(\d+)', txt)
-            else:
+                # Soporta: "accept = 443" y "accept = 0.0.0.0:443"
+                ssl_ports = re.findall(r'accept\s*=\s*(?:[^\s:]*:)?(\d+)', txt)
+            if not ssl_ports:
+                # Fallback: leer desde ss output
                 for line in output.split('\n'):
                     if 'stunnel' in line:
                         match = re.search(r':(\d+)\s', line)
