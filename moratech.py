@@ -84,7 +84,7 @@ def get_system_info():
 
         # IP Pública
         try:
-            info['ip'] = subprocess.check_output(["curl", "-s", "ifconfig.me"], timeout=3).decode().strip()
+            info['ip'] = subprocess.check_output(["curl", "-s", "-4", "ifconfig.me"], timeout=3).decode().strip()
         except:
             info['ip'] = "No disponible"
 
