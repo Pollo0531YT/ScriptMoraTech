@@ -102,10 +102,36 @@ def agregar_usuario():
 def add_ssh_user():
     """Agregar usuario SSH desde el menú"""
     print(f"\n{Color.CYAN}--- NUEVO USUARIO SSH ---{Color.END}\n")
-    username = input(f"{Color.GREEN}Nombre de usuario: {Color.END}").strip()
-    password = input(f"{Color.GREEN}Contraseña: {Color.END}").strip()
-    days = input(f"{Color.GREEN}Días de duración: {Color.END}").strip()
-    max_conn = input(f"{Color.GREEN}Máximas conexiones: {Color.END}").strip()
+    while True:
+        username = input(f"{Color.GREEN}Nombre de usuario: {Color.END}").strip()
+        if not username:
+            print(f" {Color.RED}✗ El nombre de usuario no puede estar vacío{Color.END}")
+            continue
+        break
+    while True:
+        password = input(f"{Color.GREEN}Contraseña: {Color.END}").strip()
+        if not password:
+            print(f" {Color.RED}✗ La contraseña no puede estar vacía{Color.END}")
+            continue
+        break
+    while True:
+        days = input(f"{Color.GREEN}Días de duración: {Color.END}").strip()
+        if not days:
+            print(f" {Color.RED}✗ Los días de duración son requeridos{Color.END}")
+            continue
+        if not days.isdigit() or int(days) < 1:
+            print(f" {Color.RED}✗ Debe ser un número válido mayor a 0{Color.END}")
+            continue
+        break
+    while True:
+        max_conn = input(f"{Color.GREEN}Máximas conexiones: {Color.END}").strip()
+        if not max_conn:
+            print(f" {Color.RED}✗ Las conexiones máximas son requeridas{Color.END}")
+            continue
+        if not max_conn.isdigit() or int(max_conn) < 1:
+            print(f" {Color.RED}✗ Debe ser un número válido mayor a 0{Color.END}")
+            continue
+        break
     
     success, msg, expires = sincronizar_usuario(
         username=username,
@@ -130,13 +156,36 @@ def add_token_user():
     print(f"\n{Color.CYAN}--- NUEVO USUARIO TOKEN ---{Color.END}\n")
     
     if not token_config.get('token_password'):
-        token_pass = input(f"{Color.GREEN}Contraseña maestra para tokens: {Color.END}").strip()
+        while True:
+            token_pass = input(f"{Color.GREEN}Contraseña maestra para tokens: {Color.END}").strip()
+            if not token_pass:
+                print(f" {Color.RED}✗ La contraseña maestra no puede estar vacía{Color.END}")
+                continue
+            break
         token_config['token_password'] = token_pass
         save_token_config(token_config)
     
-    display_name = input(f"{Color.GREEN}Nombre del usuario: {Color.END}").strip()
-    token = input(f"{Color.GREEN}Token de acceso: {Color.END}").strip()
-    days = input(f"{Color.GREEN}Días de duración: {Color.END}").strip()
+    while True:
+        display_name = input(f"{Color.GREEN}Nombre del usuario: {Color.END}").strip()
+        if not display_name:
+            print(f" {Color.RED}✗ El nombre del usuario no puede estar vacío{Color.END}")
+            continue
+        break
+    while True:
+        token = input(f"{Color.GREEN}Token de acceso: {Color.END}").strip()
+        if not token:
+            print(f" {Color.RED}✗ El token de acceso no puede estar vacío{Color.END}")
+            continue
+        break
+    while True:
+        days = input(f"{Color.GREEN}Días de duración: {Color.END}").strip()
+        if not days:
+            print(f" {Color.RED}✗ Los días de duración son requeridos{Color.END}")
+            continue
+        if not days.isdigit() or int(days) < 1:
+            print(f" {Color.RED}✗ Debe ser un número válido mayor a 0{Color.END}")
+            continue
+        break
     
     success, msg, expires = sincronizar_usuario(
         username=token,
@@ -179,7 +228,12 @@ def editar_usuario():
         print(f" {Color.GREEN}[{i}]{Color.END} {user:<15} | {status}")
 
     print_line()
-    idx = input(f" {Color.YELLOW}Selecciona número o escribe nombre: {Color.END}").strip()
+    idx = input(f" {Color.YELLOW}Selecciona número o escribe nombre/token: {Color.END}").strip()
+    
+    if not idx:
+        print(f"\n {Color.RED}✗ Debes ingresar un número o nombre de usuario.{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
     
     # Manejo de selección por índice o nombre
     target = None
@@ -189,7 +243,9 @@ def editar_usuario():
         target = idx
         
     if not target or target == "admin":
-        print(f" {Color.RED}Selección inválida.{Color.END}"); time.sleep(1); return
+        print(f"\n {Color.RED}✗ El usuario '{idx}' no existe o no es válido.{Color.END}")
+        input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+        return
 
     # Menú de edición del usuario seleccionado
     print(f"\n {Color.CYAN}Editando: {Color.WHITE}{target}{Color.END}")
@@ -197,7 +253,7 @@ def editar_usuario():
     opc = input(f" {Color.YELLOW}Opción: {Color.END}")
 
     if opc == '1':  # Sumar días
-        d = input(" Cantidad de días a sumar: ")
+        d = input(" Cantidad de días a sumar: ").strip()
         if d.isdigit():
             success, msg, new_date = sincronizar_usuario(
                 username=target,
@@ -210,7 +266,7 @@ def editar_usuario():
                 print(f" {Color.RED}✗ {msg}{Color.END}")
 
     elif opc == '2':  # Reiniciar días
-        d = input(" Nuevos días totales (desde hoy): ")
+        d = input(" Nuevos días totales (desde hoy): ").strip()
         if d.isdigit():
             success, msg, new_date = sincronizar_usuario(
                 username=target,
@@ -333,7 +389,7 @@ def ejecutar_borrado_fisico(username):
             # Si falla el guardado, intentar limpiar el temporal
             try:
                 os.unlink(temp_path)
-            except:
+            except Exception:
                 pass
             return False, f"Error guardando JSON: {str(e)}"
         
@@ -443,7 +499,10 @@ def borrar_expirados():
         
         expires = user_data.get('expires')
         if expires:
-            exp_date = datetime.fromisoformat(expires).replace(tzinfo=CR_TZ)
+            try:
+                exp_date = datetime.fromisoformat(expires).replace(tzinfo=CR_TZ)
+            except Exception:
+                continue
             if now > exp_date:
                 dias_vencido = (now - exp_date).days
                 expirados.append((username, dias_vencido))
@@ -745,10 +804,10 @@ def reset_token_password():
         with os.fdopen(temp_fd, 'w') as f:
             json.dump(users, f, indent=4)
         shutil.move(temp_path, str(USERS_FILE))
-    except:
+    except Exception:
         try:
             os.unlink(temp_path)
-        except:
+        except Exception:
             pass
     
     print(f"\n\n {Color.GREEN}✓ Contraseña actualizada en {actualizados}/{total} tokens{Color.END}")
@@ -759,18 +818,25 @@ def reset_token_password():
 
 def load_users():
     """Carga usuarios"""
+    if not USERS_FILE.exists():
+        return {}
     with open(USERS_FILE, 'r') as f:
         return json.load(f)
 
 def load_token_config():
     """Carga config de tokens"""
+    if not TOKEN_CONFIG_FILE.exists():
+        return {"token_password": None}
     with open(TOKEN_CONFIG_FILE, 'r') as f:
         return json.load(f)
 
 def save_token_config(config):
-    """Guarda config de tokens"""
-    with open(TOKEN_CONFIG_FILE, 'w') as f:
+    """Guarda config de tokens (atómico)"""
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = TOKEN_CONFIG_FILE.with_suffix(TOKEN_CONFIG_FILE.suffix + '.tmp')
+    with open(tmp, 'w') as f:
         json.dump(config, f, indent=4)
+    os.replace(tmp, TOKEN_CONFIG_FILE)
 
 def sincronizar_usuario(username, password=None, dias=None, operacion='crear', user_type='ssh', max_conn=1, display_name=None):
     """
@@ -805,7 +871,7 @@ def sincronizar_usuario(username, password=None, dias=None, operacion='crear', u
         # Convertir días a int
         try:
             dias_int = int(dias) if dias is not None else 0
-        except:
+        except Exception:
             return False, "Días inválidos", None
         
         # ==================== CALCULAR FECHA DE EXPIRACIÓN ====================
@@ -907,7 +973,7 @@ def sincronizar_usuario(username, password=None, dias=None, operacion='crear', u
         except Exception as e:
             try:
                 os.unlink(temp_path)
-            except:
+            except Exception:
                 pass
             return False, f"Error guardando JSON: {str(e)}", None
         
@@ -947,7 +1013,7 @@ def menu_backup():
                     print(f" {Color.YELLOW}No hay backups locales{Color.END}")
             else:
                 print(f" {Color.YELLOW}No hay backups locales{Color.END}")
-        except:
+        except Exception:
             pass
         
         print_line()
@@ -1049,7 +1115,7 @@ def backup_online_chumo():
             ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip()
-        except:
+        except Exception:
             server_ip = "TU_IP"
         
         # Configurar servidor HTTP
@@ -1116,7 +1182,7 @@ def restore_online_chumo_eliminar():
                 last_url = f.read().strip()
                 print(f"\n {Color.YELLOW}Último backup:{Color.END}")
                 print(f" {Color.GRAY}{last_url}{Color.END}")
-    except:
+    except Exception:
         pass
     
     backup_url = input(f"\n {Color.GREEN}Enlace del backup: {Color.END}").strip()
@@ -1231,7 +1297,7 @@ def restore_online_chumo_eliminar():
         try:
             with open(url_file, 'w') as f:
                 f.write(backup_url)
-        except:
+        except Exception:
             pass
     
     except Exception as e:
@@ -1256,7 +1322,7 @@ def restore_online_chumo_fusionar():
                 last_url = f.read().strip()
                 print(f"\n {Color.YELLOW}Último backup:{Color.END}")
                 print(f" {Color.GRAY}{last_url}{Color.END}")
-    except:
+    except Exception:
         pass
     
     backup_url = input(f"\n {Color.GREEN}Enlace del backup: {Color.END}").strip()
@@ -1422,7 +1488,7 @@ def restore_online_chumo_fusionar():
         try:
             with open(url_file, 'w') as f:
                 f.write(backup_url)
-        except:
+        except Exception:
             pass
     
     except Exception as e:
@@ -1461,7 +1527,7 @@ def restore_local_chumo_eliminar():
     
     try:
         seleccionado = backups[int(opc) - 1]
-    except:
+    except Exception:
         print(f" {Color.RED}✗ Opción inválida{Color.END}")
         input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
         return
@@ -1586,7 +1652,7 @@ def restore_local_chumo_fusionar():
     
     try:
         seleccionado = backups[int(opc) - 1]
-    except:
+    except Exception:
         print(f" {Color.RED}✗ Opción inválida{Color.END}")
         input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
         return
@@ -1757,7 +1823,7 @@ def list_backups_chumo():
                     with open(backup, 'r') as f:
                         # Contamos solo líneas que no estén vacías
                         users_count = sum(1 for line in f if line.strip())
-                except:
+                except Exception:
                     users_count = '?'
                 
                 print(f" {Color.GREEN}{backup.name}{Color.END}")
@@ -1792,7 +1858,7 @@ def menu_checkuser():
                     port = f.read().strip()
             else:
                 port = "8888"
-        except:
+        except Exception:
             port = "8888"
         
         print(f"\n {Color.GREEN}✓ Servidor activo en puerto {port}{Color.END}")
@@ -1803,7 +1869,7 @@ def menu_checkuser():
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip()
             print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/checkUser{Color.END}")
-        except:
+        except Exception:
             pass
         
         print_line()
@@ -1866,7 +1932,7 @@ def start_checkuser_server():
                 if check.returncode == 0:
                     pip_cmd = cmd
                     break
-            except:
+            except Exception:
                 continue
         
         if not pip_cmd:
@@ -1893,7 +1959,6 @@ def start_checkuser_server():
                 # Verificar instalación nuevamente
                 check_flask = subprocess.run(['python3', '-c', 'import flask'], 
                                              capture_output=True, text=True)
-                ip_result
                 if install_result.returncode != 0:
                     # Fallback a pip normal
                     subprocess.run(pip_cmd.split() + ['install', 'flask', '--break-system-packages'], 
@@ -1951,7 +2016,7 @@ def start_checkuser_server():
             ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip()
-        except:
+        except Exception:
             server_ip = "TU_IP"
         
         print(f"\n {Color.GREEN}✓ Servidor CheckUser iniciado{Color.END}")
@@ -2046,7 +2111,7 @@ def menu_api_server():
                     port = f.read().strip()
             else:
                 port = "9000"
-        except:
+        except Exception:
             port = "9000"
         
         print(f"\n {Color.GREEN}✓ Servidor API activo en puerto {port}{Color.END}")
@@ -2058,7 +2123,7 @@ def menu_api_server():
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip()
             print(f" {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/api/{Color.END}")
-        except:
+        except Exception:
             pass
         
         print_line()
@@ -2172,7 +2237,7 @@ def start_api_server():
             ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip()
-        except:
+        except Exception:
             server_ip = "TU_IP"
         
         print(f"\n {Color.GREEN}✓ Servidor API iniciado{Color.END}")
@@ -2233,7 +2298,7 @@ def restart_api_server():
                 port = f.read().strip()
         else:
             port = "9000"
-    except:
+    except Exception:
         port = "9000"
     
     print(f"\n {Color.YELLOW}⏳ Deteniendo servidor...{Color.END}")
@@ -2270,7 +2335,7 @@ def restart_api_server():
                                          capture_output=True, text=True, timeout=3)
                 server_ip = ip_result.stdout.strip()
                 print(f"\n {Color.CYAN}URL: {Color.GREEN}http://{server_ip}:{port}/api/{Color.END}")
-            except:
+            except Exception:
                 pass
             
             moratech.log_action("admin", f"API Server reiniciado en puerto {port}")
@@ -2328,7 +2393,7 @@ def menu_api_general():
                     port = f.read().strip()
             else:
                 port = "9100"
-        except:
+        except Exception:
             port = "9100"
         
         print(f"\n {Color.GREEN}✓ API General activo en puerto {port}{Color.END}")
@@ -2341,7 +2406,7 @@ def menu_api_general():
             server_ip = ip_result.stdout.strip()
             print(f" {Color.CYAN}Dashboard: {Color.GREEN}http://{server_ip}:{port}/dashboard-global{Color.END}")
             print(f" {Color.CYAN}Panel Control: {Color.GREEN}http://{server_ip}:{port}/panel-control{Color.END}")
-        except:
+        except Exception:
             pass
         
         print_line()
@@ -2444,7 +2509,7 @@ def start_api_general_server():
             ip_result = subprocess.run(['curl', '-s', '-4', 'ifconfig.me'], 
                                      capture_output=True, text=True, timeout=3)
             server_ip = ip_result.stdout.strip() or "TU_IP"
-        except:
+        except Exception:
             server_ip = "TU_IP"
         
         print(f"\n {Color.GREEN}✓ API General iniciado{Color.END}")
@@ -2503,7 +2568,7 @@ def restart_api_general_server():
                 port = f.read().strip()
         else:
             port = "9100"
-    except:
+    except Exception:
         port = "9100"
     
     print(f"\n {Color.YELLOW}⏳ Deteniendo servidor...{Color.END}")
@@ -2542,7 +2607,7 @@ def restart_api_general_server():
                 server_ip = ip_result.stdout.strip()
                 print(f"\n {Color.CYAN}Dashboard: {Color.GREEN}http://{server_ip}:{port}/dashboard-global{Color.END}")
                 print(f" {Color.CYAN}Panel Control: {Color.GREEN}http://{server_ip}:{port}/panel-control{Color.END}")
-            except:
+            except Exception:
                 pass
             
             moratech.log_action("admin", f"API General reiniciado en puerto {port}")
@@ -2612,7 +2677,7 @@ def menu_bot_telegram():
                     
                     print(f" {Color.CYAN}Bot: {Color.GREEN}@{bot_username}{Color.END}")
                     print(f" {Color.CYAN}Usuario acceso: {Color.GREEN}{access_user}{Color.END}")
-        except:
+        except Exception:
             pass
         
         print_line()
