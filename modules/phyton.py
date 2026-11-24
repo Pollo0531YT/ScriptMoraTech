@@ -218,6 +218,7 @@ def install_proxy():
 
         moratech.log_action("admin", f"Proxy Python configurado en puerto {port}")
         autostart.register('proxy', port=int(port))
+        install_watchdog()
 
     except Exception as e:
         print(f"\n {Color.RED}✗ Error durante la instalación: {str(e)}{Color.END}")
@@ -225,6 +226,29 @@ def install_proxy():
         traceback.print_exc()
 
     input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
+
+
+def install_watchdog():
+    """Cron cada minuto que reinicia el proxy si su puerto deja de escuchar"""
+    from modules.proxy_template import WATCHDOG_PATH, WATCHDOG_CRON, WATCHDOG_SCRIPT, WATCHDOG_CRON_LINE
+    try:
+        with open(WATCHDOG_PATH, 'w') as f:
+            f.write(WATCHDOG_SCRIPT)
+        os.chmod(WATCHDOG_PATH, 0o755)
+        with open(WATCHDOG_CRON, 'w') as f:
+            f.write(WATCHDOG_CRON_LINE)
+        os.chmod(WATCHDOG_CRON, 0o644)
+    except Exception as e:
+        print(f"\n {Color.RED}⚠ No se pudo instalar el vigilante del proxy: {e}{Color.END}")
+
+
+def uninstall_watchdog():
+    """Quitar el cron del vigilante (si no, revive el proxy recién detenido)"""
+    from modules.proxy_template import WATCHDOG_CRON
+    try:
+        os.remove(WATCHDOG_CRON)
+    except Exception:
+        pass
 
 
 def stop_proxy():
@@ -382,6 +406,7 @@ def stop_proxy():
             print(f"\n {Color.GREEN}✓ Todos los proxies detenidos{Color.END}")
             moratech.log_action("admin", "Todos los proxies detenidos")
             autostart.unregister('proxy')
+            uninstall_watchdog()
             input(f"\n {Color.CYAN}Presiona Enter...{Color.END}")
             return
 
@@ -411,6 +436,7 @@ def stop_proxy():
                 print(f"\n {Color.GREEN}✓ Proxy en puerto {port} detenido{Color.END}")
                 moratech.log_action("admin", f"Proxy puerto {port} detenido")
                 autostart.unregister('proxy')
+                uninstall_watchdog()
             else:
                 print(f" {Color.RED}✗ Opción inválida{Color.END}")
         except ValueError:

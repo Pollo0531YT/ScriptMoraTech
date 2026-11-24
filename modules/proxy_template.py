@@ -7,7 +7,13 @@ Este archivo es solo una plantilla, no se ejecuta directamente
 
 PROXY_SCRIPT = """#!/usr/bin/env python
 # encoding: utf-8
-import socket, threading, thread, select, signal, sys, time, getopt
+import socket, threading, thread, select, signal, sys, time, getopt, resource
+
+# Subir limite de archivos abiertos (default 1024 se agota con muchos clientes)
+try:
+    resource.setrlimit(resource.RLIMIT_NOFILE, (65535, 65535))
+except Exception:
+    pass
 
 # Listen
 LISTENING_ADDR = '0.0.0.0'
@@ -60,10 +66,17 @@ class Server(threading.Thread):
                     c.setblocking(1)
                 except socket.timeout:
                     continue
+                except socket.error as e:
+                    # Ej: Too many open files. Esperar y seguir, no matar el servidor
+                    self.printLog('accept error: ' + str(e))
+                    time.sleep(1)
+                    continue
 
                 conn = ConnectionHandler(c, self, addr)
-                conn.start()
+                # Agregar ANTES de start: si la conexion muere al instante,
+                # removeConn ya la encuentra y no queda colgada en la lista
                 self.addConn(conn)
+                conn.start()
         finally:
             self.running = False
             self.soc.close()
@@ -84,7 +97,8 @@ class Server(threading.Thread):
     def removeConn(self, conn):
         try:
             self.threadsLock.acquire()
-            self.threads.remove(conn)
+            if conn in self.threads:
+                self.threads.remove(conn)
         finally:
             self.threadsLock.release()
 
@@ -111,26 +125,33 @@ class ConnectionHandler(threading.Thread):
         self.log = 'Connection: ' + str(addr)
 
     def close(self):
-        try:
-            if not self.clientClosed:
+        # shutdown falla si el otro lado ya cerro; close() debe correr igual
+        if not self.clientClosed:
+            try:
                 self.client.shutdown(socket.SHUT_RDWR)
+            except:
+                pass
+            try:
                 self.client.close()
-        except:
-            pass
-        finally:
+            except:
+                pass
             self.clientClosed = True
 
-        try:
-            if not self.targetClosed:
+        if not self.targetClosed:
+            try:
                 self.target.shutdown(socket.SHUT_RDWR)
+            except:
+                pass
+            try:
                 self.target.close()
-        except:
-            pass
-        finally:
+            except:
+                pass
             self.targetClosed = True
 
     def run(self):
         try:
+            # Clientes que conectan y no mandan nada no dejan el hilo colgado
+            self.client.settimeout(TIMEOUT)
             self.client_buffer = self.client.recv(BUFLEN)
 
             hostPort = self.findHeader(self.client_buffer, 'X-Real-Host')
@@ -159,7 +180,7 @@ class ConnectionHandler(threading.Thread):
                 self.client.send('HTTP/1.1 400 NoXRealHost!\\r\\n\\r\\n')
 
         except Exception as e:
-            self.log += ' - error: ' + e.strerror
+            self.log += ' - error: ' + str(e)
             self.server.printLog(self.log)
             pass
         finally:
@@ -204,6 +225,8 @@ class ConnectionHandler(threading.Thread):
         self.connect_target(path)
         self.client.sendall(RESPONSE)
         self.client_buffer = ''
+        # Tunel establecido: sin timeout, el control de inactividad lo hace doCONNECT
+        self.client.settimeout(None)
 
         self.server.printLog(self.log)
         self.doCONNECT()
@@ -223,7 +246,7 @@ class ConnectionHandler(threading.Thread):
                         data = in_.recv(BUFLEN)
                         if data:
                             if in_ is self.target:
-                                self.client.send(data)
+                                self.client.sendall(data)
                             else:
                                 while data:
                                     byte = self.target.send(data)
@@ -287,3 +310,25 @@ if __name__ == '__main__':
     parse_args(sys.argv[1:])
     main()
 """
+
+# Vigilante: cron cada minuto. Si el proxy no corre o su socket de escucha murio
+# (proceso vivo pero puerto cerrado), lo reinicia.
+WATCHDOG_PATH = '/usr/local/bin/moratech-proxy-watchdog'
+WATCHDOG_CRON = '/etc/cron.d/moratech-proxy'
+
+WATCHDOG_SCRIPT = r"""#!/bin/bash
+# MORATECH - vigilante del Proxy Python
+[ -f /root/proxy.py ] || exit 0
+PID=$(pgrep -f '^python[0-9.]* /root/proxy.py' | head -1)
+if [ -n "$PID" ] && ss -tlnp | grep -q "pid=$PID,"; then
+    exit 0
+fi
+[ -n "$PID" ] && kill -9 $PID 2>/dev/null
+screen -S pythonwe -X quit >/dev/null 2>&1
+screen -wipe >/dev/null 2>&1
+PY=$(command -v python2 || command -v python)
+screen -dmS pythonwe $PY /root/proxy.py
+echo "$(date '+%Y-%m-%d %H:%M:%S') proxy reiniciado (pid previo: ${PID:-ninguno})" >> /var/log/moratech-proxy-watchdog.log
+"""
+
+WATCHDOG_CRON_LINE = "* * * * * root /bin/bash " + WATCHDOG_PATH + " >/dev/null 2>&1\n"
